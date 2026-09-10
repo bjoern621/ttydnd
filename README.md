@@ -69,9 +69,8 @@ Keep both counts up from `notes-1.txt` until the name is free, on either end.
 The file already sitting there keeps its name and its content.
 Skip copies the items whose names were free and leaves the rest alone.
 
-The dialog takes arrow keys and Tab to move the gold frame, Enter for the framed button, the highlighted letter, or a click.
-The frame follows the pointer, so hovering a button and pressing Enter picks it.
-Esc copies nothing.
+The dialog takes Enter for the default, the highlighted letter, a click on a button, or Esc to copy nothing.
+kitty's ask kitten binds no arrow keys.
 
 ## Dragging files out
 

@@ -7,7 +7,6 @@
 
 import base64
 import io
-import json
 import os
 import shlex
 import shutil
@@ -32,9 +31,6 @@ RECEIVE = (
     " [ $s = 0 ] && printf '\\033]1337;SetUserVar=kdrop=ZG9uZQ==\\a'"
     " || printf '\\033]1337;SetUserVar=kdrop=ZmFpbA==\\a'\n"
 )
-
-# The dialog kitten, a sibling of this file.
-CONFIRM = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'confirm.py')
 
 # Window id to the drop awaiting a probe reply.
 pending = {}
@@ -164,36 +160,18 @@ def ask(window, paths, names, free, destination, run):
         else:
             notify(window, 'Files not copied', summarize(names))
 
-    if clashes:
-        choices = [
-            {'letter': 'k', 'color': 'green', 'label': 'Keep both'},
-            {'letter': 'o', 'color': 'red', 'label': 'Overwrite'},
-            {'letter': 's', 'color': 'yellow', 'label': 'Skip'},
-        ]
-        default = 'k'
-    else:
-        choices = [
-            {'letter': 'y', 'color': 'green', 'label': 'Copy'},
-            {'letter': 'c', 'color': 'red', 'label': 'Cancel'},
-        ]
-        default = 'y'
-    spec = json.dumps({'message': message, 'choices': choices, 'default': default})
-
     # Deferred a tick: both callers run inside a kitty callback, and the overlay reenters it.
     def show(timer_id):
-        picked = {'response': ''}
-
-        def collect(data, target_window_id, boss):
-            picked['response'] = data.get('response') or ''
-
-        # Answered only once the overlay is gone, so the shell gets the payload with focus back.
-        def closed(target_window_id, boss):
-            answered(picked['response'])
-
-        get_boss().run_kitten_with_metadata(
-            CONFIRM, [spec], window=window,
-            custom_callback=collect, action_on_removal=closed,
-            default_data={'response': ''},
+        # The ask kitten requires each shortcut letter to occur in its own label.
+        if clashes:
+            choices = ('k;green:Keep both', 'o;red:Overwrite', 's;yellow:Skip')
+            default = 'k'
+        else:
+            choices = ('y;green:Copy', 'c;red:Cancel')
+            default = 'y'
+        get_boss().choose(
+            message, answered, *choices,
+            window=window, default=default, title='Copy files',
         )
 
     add_timer(show, 0, False)

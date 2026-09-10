@@ -1,4 +1,4 @@
-{ dir }:
+{ drop }:
 
 { config, lib, ... }:
 
@@ -39,7 +39,7 @@ in
 
     # extraConfig rather than settings.watcher, so other watchers keep their own lines.
     programs.kitty.extraConfig = ''
-      watcher ${dir}/drop.py
+      watcher ${drop}
     ''
     + lib.optionalString cfg.dragOut ''
       mouse_map left press ungrabbed mouse_selection drag_or_normal_select
