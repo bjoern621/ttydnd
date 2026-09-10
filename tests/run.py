@@ -39,7 +39,7 @@ def load():
         ('kitty.utils', {'parse_uri_list': lambda text: []}),
         ('kitty.window', {'Window': type('Window', (), {'on_drop': lambda self, drop: None})}),
         ('kitty.boss', {'get_boss': lambda: None}),
-        ('kitty.fast_data_types', {'add_timer': lambda *a: None}),
+        ('kitty.fast_data_types', {'add_timer': lambda *a: None, 'remove_timer': lambda *a: None}),
     ):
         module = types.ModuleType(name)
         for key, value in attrs.items():
@@ -191,12 +191,12 @@ def test_choices(drop, tmp):
             callback(self.answer)
 
     drop.add_timer = lambda fn, delay, repeat: fn(0)
-    drop.notify = lambda window, title, body: seen.__setitem__('notified', title)
+    drop.report = lambda window, text: seen.__setitem__('reported', text)
 
     def run_with(answer):
         written = []
         drop.get_boss = lambda: Boss(answer)
-        seen.pop('notified', None)
+        seen.pop('reported', None)
         drop.ask(None, paths, names, free, f'into {dest}',
                  lambda p, n: written.append(([os.path.basename(x) for x in p], n)))
         return written
@@ -207,7 +207,7 @@ def test_choices(drop, tmp):
           [(['a.txt', 'b.txt'], ['a.txt', 'b.txt'])])
     check('skip writes only what was free', run_with('s'), [(['b.txt'], ['b.txt'])])
     check('esc writes nothing', run_with(''), [])
-    check('esc notifies', seen['notified'], 'Files not copied')
+    check('esc reports nothing copied', seen['reported'], 'Nothing copied')
     check('clash choices', seen['choices'],
           ('k;green:Keep both', 'o;red:Overwrite', 's;yellow:Skip'))
     check('keep both is the default', seen['default'], 'k')
@@ -221,6 +221,32 @@ def test_choices(drop, tmp):
              lambda p, n: written.append(n))
     check('clean drop choices', seen['choices'], ('y;green:Copy', 'c;red:Cancel'))
     check('clean drop writes every name', written, [['a.txt', 'b.txt']])
+
+
+def test_reports(drop):
+    """A second result inside the linger keeps the title from before the first."""
+    timers = []
+    removed = []
+    drop.add_timer = lambda fn, delay, repeat: timers.append(fn) or len(timers)
+    drop.remove_timer = removed.append
+    drop.progress = lambda window, state: None
+
+    class Window:
+        id = 7
+        override_title = 'mine'
+
+        def set_title(self, title):
+            self.override_title = title
+
+    window = Window()
+    drop.get_boss = lambda: types.SimpleNamespace(window_id_map={7: window})
+    drop.report(window, 'Copied a.txt')
+    drop.report(window, 'Copied b.txt')
+    check('second report cancels the first timer', removed, [1])
+    check('title shows the latest result', window.override_title, 'Copied b.txt')
+    timers[-1](2)
+    check('restore brings the earlier title back', window.override_title, 'mine')
+    check('restore forgets the window', drop.reports, {})
 
 
 def test_refusals(drop, tmp):
@@ -254,6 +280,7 @@ def main():
         test_names(drop, tmp)
         test_transfer(drop, tmp)
         test_choices(drop, tmp)
+        test_reports(load())
         test_refusals(drop, tmp)
     print()
     if failures:

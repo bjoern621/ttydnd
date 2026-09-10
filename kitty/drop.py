@@ -13,7 +13,7 @@ import shutil
 import tarfile
 
 from kitty.boss import get_boss
-from kitty.fast_data_types import add_timer
+from kitty.fast_data_types import add_timer, remove_timer
 from kitty.utils import parse_uri_list
 from kitty.window import Window
 
@@ -23,6 +23,9 @@ WRAP = 76
 
 # Seconds a probe waits before the drop falls back to kitty's own handling.
 TIMEOUT = 3
+
+# Seconds a result stays in the window title.
+LINGER = 4
 
 # stty -echo stops the remote tty echoing the payload back at double the traffic.
 # ZG9uZQ== and ZmFpbA== decode to done and fail, arriving as the user var once tar has run.
@@ -37,6 +40,9 @@ pending = {}
 
 # Window id to the summary of a transfer in flight.
 sending = {}
+
+# Window id to the override title in place before a result, and the timer restoring it.
+reports = {}
 
 
 def probe(names):
@@ -128,12 +134,43 @@ def tarball(paths, names):
     return buf.getvalue()
 
 
-def notify(window, title, body):
-    manager = get_boss().notification_manager
-    cmd = manager.create_notification_cmd()
-    cmd.title = title
-    cmd.body = body
-    manager.notify_with_command(cmd, window.id)
+def progress(window, state):
+    """Drive the tab bar marker and the progress bar the way an OSC 9;4 report does.
+
+    3 spins, 2 marks an error, 0 clears.
+    """
+    window.progress.update(state)
+    window.screen.set_progress(window.progress.state.value, window.progress.percent)
+    tab = window.tabref()
+    if tab is not None:
+        tab.update_progress()
+
+
+def report(window, text):
+    """Put text in the window title for a few seconds, then restore what was there."""
+    entry = reports.pop(window.id, None)
+    if entry:
+        remove_timer(entry['timer'])
+        previous = entry['previous']
+    else:
+        previous = window.override_title
+    window.set_title(text)
+    window_id = window.id
+    reports[window_id] = {
+        'previous': previous,
+        'timer': add_timer(lambda timer_id: restore(window_id), LINGER, False),
+    }
+
+
+def restore(window_id):
+    entry = reports.pop(window_id, None)
+    window = get_boss().window_id_map.get(window_id)
+    if entry is None or window is None:
+        return
+    window.set_title(entry['previous'])
+    # A probe or transfer started meanwhile keeps its spinner.
+    if window_id not in pending and window_id not in sending:
+        progress(window, 0)
 
 
 def ask(window, paths, names, free, destination, run):
@@ -156,9 +193,9 @@ def ask(window, paths, names, free, destination, run):
             if kept:
                 run([p for p, _ in kept], [n for _, n in kept])
             else:
-                notify(window, 'Files not copied', summarize(names))
+                report(window, 'Nothing copied')
         else:
-            notify(window, 'Files not copied', summarize(names))
+            report(window, 'Nothing copied')
 
     # Deferred a tick: both callers run inside a kitty callback, and the overlay reenters it.
     def show(timer_id):
@@ -186,13 +223,14 @@ def copy_local(window, cwd, paths, names):
             else:
                 shutil.copy2(p, dest)
     except OSError as err:
-        notify(window, 'Files not copied', str(err))
+        report(window, f'Could not copy {name}. {err.strerror or err}')
         return
-    notify(window, 'Files copied', summarize(names))
+    report(window, f'Copied {summarize(names)}')
 
 
 def send_remote(window, paths, names):
     sending[window.id] = summarize(names)
+    progress(window, 3)
     window.write_to_child(RECEIVE)
     text = base64.b64encode(tarball(paths, names))
     lines = [text[i:i + WRAP] for i in range(0, len(text), WRAP)]
@@ -205,8 +243,8 @@ def expire(window_id):
     window = get_boss().window_id_map.get(window_id)
     if entry and window is not None:
         window.original_on_drop(entry['drop'])
-        notify(window, 'Files not copied',
-               'The remote shell did not answer. The paths were pasted at the prompt.')
+        progress(window, 0)
+        report(window, 'No answer from the remote, so the paths were pasted')
 
 
 def on_set_user_var(boss, window, data):
@@ -217,13 +255,16 @@ def on_set_user_var(boss, window, data):
         if not summary:
             return
         if data['value'] == 'done':
-            notify(window, 'Files copied', summary)
+            progress(window, 0)
+            report(window, f'Copied {summary}')
         else:
-            notify(window, 'Files not copied', 'The remote could not extract the archive.')
+            progress(window, 2)
+            report(window, 'The remote could not unpack the files')
         return
     entry = pending.pop(window.id, None)
     if entry is None:
         return
+    progress(window, 0)
     ask(window, entry['paths'], entry['names'], data['value'].split('/')[1:],
         'into the remote working directory',
         lambda kept, chosen: send_remote(window, kept, chosen))
@@ -237,6 +278,7 @@ def on_drop(self, drop):
     names = plan_names(paths)
     if self.child_is_remote:
         pending[self.id] = {'paths': paths, 'names': names, 'drop': drop}
+        progress(self, 3)
         self.write_to_child(probe(names))
         window_id = self.id
         add_timer(lambda timer_id: expire(window_id), TIMEOUT, False)

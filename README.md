@@ -59,7 +59,7 @@ Watchers attach when a window is created, so open windows keep kitty's own drop 
 | Situation | Result |
 | --- | --- |
 | Local shell at a prompt | Confirm, then copy into the reported cwd |
-| Shell over ssh | Confirm, then send, then a desktop notification either way |
+| Shell over ssh | Confirm, then send, with kitty's progress marker showing until the remote answers |
 | A name already exists | The dialog offers Keep both, Overwrite or Skip, and names the clash |
 | Two dropped items share a basename | The second is suffixed, so a drop never loses an item |
 | A full-screen program owns the screen | Falls back to kitty's own handling, so `vim` is never typed at |
@@ -71,6 +71,9 @@ Skip copies the items whose names were free and leaves the rest alone.
 
 The dialog takes Enter for the default, the highlighted letter, a click on a button, or Esc to copy nothing.
 kitty's ask kitten binds no arrow keys.
+
+The result shows in the window title for a few seconds, then the earlier title comes back.
+A probe or a transfer in flight shows as kitty's progress marker in the tab bar and its progress bar on the window edge, the same signal an OSC 9;4 report gives.
 
 ## Dragging files out
 
@@ -104,7 +107,7 @@ Python and the remote shell resolve free names independently, so it runs both an
 - The remote shell records one `stty -echo; base64 -d | tar -xf -` line per drop, unless that shell ignores space-prefixed commands.
 - `mosh` carries neither the reply nor the paste reliably.
 - tmux on the remote needs `allow-passthrough` for the reply, though the payload itself is fine.
-- `Window.on_drop` is kitty internal, so a kitty release can move it.
+- `Window.on_drop`, the window title and the progress marker are kitty internals, so a kitty release can move them.
 
 ## Porting
 
