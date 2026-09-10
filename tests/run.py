@@ -6,14 +6,18 @@ both and compares.  A mismatch would make the confirmation dialog lie.
 """
 
 import base64
+import fcntl
 import hashlib
+import json
 import os
 import pty
 import re
 import select
 import shutil
+import struct
 import sys
 import tempfile
+import termios
 import threading
 import time
 import types
@@ -47,6 +51,8 @@ def load():
         sys.modules[name] = module
     path = os.path.join(ROOT, 'kitty', 'drop.py')
     module = types.ModuleType('drop')
+    # runpy.run_path sets __file__, and the watcher finds confirm.py through it.
+    module.__dict__['__file__'] = path
     exec(compile(open(path).read(), path, 'exec'), module.__dict__)
     return module
 
@@ -184,11 +190,14 @@ def test_choices(drop, tmp):
         def __init__(self, answer):
             self.answer = answer
 
-        def choose(self, message, callback, *choices, **kw):
-            seen['message'] = message
-            seen['choices'] = choices
-            seen['default'] = kw['default']
-            callback(self.answer)
+        def run_kitten_with_metadata(self, kitten, args, **kw):
+            spec = json.loads(args[0])
+            seen['message'] = spec['message']
+            seen['choices'] = tuple(c['letter'] for c in spec['choices'])
+            seen['labels'] = tuple(c['label'] for c in spec['choices'])
+            seen['default'] = spec['default']
+            kw['custom_callback']({'response': self.answer}, 0, self)
+            kw['action_on_removal'](0, self)
 
     drop.add_timer = lambda fn, delay, repeat: fn(0)
     drop.notify = lambda window, title, body: seen.__setitem__('notified', title)
@@ -208,8 +217,7 @@ def test_choices(drop, tmp):
     check('skip writes only what was free', run_with('s'), [(['b.txt'], ['b.txt'])])
     check('esc writes nothing', run_with(''), [])
     check('esc notifies', seen['notified'], 'Files not copied')
-    check('clash choices', seen['choices'],
-          ('k;green:Keep both', 'o;red:Overwrite', 's;yellow:Skip'))
+    check('clash choices', seen['labels'], ('Keep both', 'Overwrite', 'Skip'))
     check('keep both is the default', seen['default'], 'k')
     check('message names the clash', 'a.txt already exists.' in seen['message'], True)
     check('message offers a way out', 'Esc cancels.' in seen['message'], True)
@@ -219,8 +227,116 @@ def test_choices(drop, tmp):
     written = []
     drop.ask(None, paths, names, names, f'into {dest}',
              lambda p, n: written.append(n))
-    check('clean drop choices', seen['choices'], ('y;green:Copy', 'c;red:Cancel'))
+    check('clean drop choices', seen['labels'], ('Copy', 'Cancel'))
     check('clean drop writes every name', written, [['a.txt', 'b.txt']])
+
+
+ROWS, COLS, CELL_W, CELL_H = 24, 80, 8, 16
+SGR = re.compile(rb'\x1b\[[0-9;]*m')
+# The frame of the focused button, painted yellow around its label.
+FRAMED = re.compile(rb'\x1b\[33m\xe2\x94\x82\x1b\[39m(.*?)\x1b\[33m\xe2\x94\x82', re.S)
+RESULT = re.compile(rb'RESULT=(\{.*?\})')
+
+SPEC = json.dumps({'message': 'Pick one.', 'default': 'k', 'choices': [
+    {'letter': 'k', 'color': 'green', 'label': 'Keep both'},
+    {'letter': 'o', 'color': 'red', 'label': 'Overwrite'},
+    {'letter': 's', 'color': 'yellow', 'label': 'Skip'}]})
+
+
+def kitty_python_dir():
+    exe = shutil.which('kitty')
+    if not exe:
+        return None
+    lib = os.path.join(os.path.dirname(os.path.realpath(exe)), '..', 'lib', 'kitty')
+    return os.path.abspath(lib) if os.path.isdir(lib) else None
+
+
+def at_cell(cell_x, cell_y):
+    """SGR pixel coordinates, which is the mode the kitten's mouse tracking asks for."""
+    return cell_x * CELL_W + CELL_W // 2, cell_y * CELL_H + CELL_H // 2
+
+
+def hover(cell_x, cell_y):
+    x, y = at_cell(cell_x, cell_y)
+    return f'\x1b[<35;{x};{y}M'.encode()
+
+
+def click(cell_x, cell_y):
+    x, y = at_cell(cell_x, cell_y)
+    return f'\x1b[<0;{x};{y}M\x1b[<0;{x};{y}m'.encode()
+
+
+def run_dialog(kitty_dir, keys):
+    path = os.path.join(ROOT, 'kitty', 'confirm.py')
+    code = (
+        'import runpy,sys,json;'
+        f'sys.argv=[{path!r}, {SPEC!r}];'
+        f'm=runpy.run_path({path!r}, run_name="__run_kitten__");'
+        'print("RESULT=" + json.dumps(m["main"](sys.argv)), file=sys.stderr)'
+    )
+    pid, fd = pty.fork()
+    if pid == 0:
+        os.environ['PYTHONPATH'] = kitty_dir
+        os.environ['TERM'] = 'xterm-256color'
+        os.execvp(sys.executable, [sys.executable, '-c', code])
+    # SGR pixel mode divides by the cell size, so the pty must report one.
+    fcntl.ioctl(fd, termios.TIOCSWINSZ,
+                struct.pack('HHHH', ROWS, COLS, COLS * CELL_W, ROWS * CELL_H))
+
+    def drain(seconds):
+        out = bytearray()
+        end = time.time() + seconds
+        while time.time() < end:
+            if select.select([fd], [], [], 0.05)[0]:
+                try:
+                    out.extend(os.read(fd, 65536))
+                except OSError:
+                    break
+        return out
+
+    out = drain(1.0)
+    for key in keys:
+        os.write(fd, key)
+        time.sleep(0.25)
+        out.extend(drain(0.2))
+    out.extend(drain(0.6))
+    try:
+        os.close(fd)
+    except OSError:
+        pass
+    os.waitpid(pid, 0)
+    out = bytes(out)
+    frames = FRAMED.findall(out)
+    answers = RESULT.findall(out)
+    return (SGR.sub(b'', frames[-1]).decode().strip() if frames else None,
+            json.loads(answers[-1])['response'] if answers else None)
+
+
+def test_dialog(drop, tmp):
+    kitty_dir = kitty_python_dir()
+    if not kitty_dir:
+        print('skip dialog checks, kitty not on PATH')
+        return
+    # Enter and Esc in kitty keyboard protocol form, which is what kitty sends.
+    cases = (
+        ('the default starts framed', [], 'Keep both', None),
+        ('right moves the frame', [b'\x1b[C'], 'Overwrite', None),
+        ('right twice', [b'\x1b[C', b'\x1b[C'], 'Skip', None),
+        ('right wraps', [b'\x1b[C'] * 3, 'Keep both', None),
+        ('left wraps', [b'\x1b[D'], 'Skip', None),
+        ('tab moves the frame', [b'\t'], 'Overwrite', None),
+        ('hover frames the second', [hover(20, 3)], 'Overwrite', None),
+        ('hover frames the third', [hover(33, 3)], 'Skip', None),
+        ('hover returns to the first', [hover(33, 3), hover(6, 3)], 'Keep both', None),
+        ('click answers', [click(33, 3)], None, 's'),
+        ('enter takes the framed one', [b'\x1b[C', b'\x1b[13u'], None, 'o'),
+        ('a letter answers', [b's'], None, 's'),
+        ('esc answers with nothing', [b'\x1b[27u'], None, ''),
+    )
+    for name, keys, want_frame, want_answer in cases:
+        frame, answer = run_dialog(kitty_dir, keys)
+        check(name, frame if want_answer is None else answer,
+              want_frame if want_answer is None else want_answer)
 
 
 def test_refusals(drop, tmp):
@@ -254,6 +370,7 @@ def main():
         test_names(drop, tmp)
         test_transfer(drop, tmp)
         test_choices(drop, tmp)
+        test_dialog(drop, tmp)
         test_refusals(drop, tmp)
     print()
     if failures:

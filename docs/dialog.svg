@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 320" width="700" height="320" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13">
   <rect width="700" height="320" fill="#fbfbfa"/>
-  <text x="20" y="26" font-size="12" fill="#6b6b6b">The confirmation, drawn by kitty's ask kitten over the window that received the drop.</text>
+  <text x="20" y="26" font-size="12" fill="#6b6b6b">The gold frame marks what Enter takes. It follows arrows, Tab and the pointer.</text>
 
   <rect x="20" y="44" width="660" height="256" rx="6" fill="#2d2a2e"/>
   <circle cx="42" cy="66" r="5" fill="#fd6883"/>
@@ -17,11 +17,11 @@
   <text x="44" y="208" fill="#f9cc6c">notes.txt already exists.</text>
   <text x="44" y="228" fill="#f9cc6c">Esc cancels.</text>
 
-  <rect x="44" y="250" width="100" height="26" rx="4" fill="#3a4a34" stroke="#adda78"/>
-  <text x="94" y="268" text-anchor="middle" fill="#adda78"><tspan fill="#fff1f3" font-weight="bold">K</tspan>eep both</text>
-  <rect x="156" y="250" width="100" height="26" rx="4" fill="#4a3234" stroke="#fd6883"/>
-  <text x="206" y="268" text-anchor="middle" fill="#fd6883"><tspan fill="#fff1f3" font-weight="bold">O</tspan>verwrite</text>
-  <rect x="268" y="250" width="62" height="26" rx="4" fill="#4a4434" stroke="#f9cc6c"/>
-  <text x="299" y="268" text-anchor="middle" fill="#f9cc6c"><tspan fill="#fff1f3" font-weight="bold">S</tspan>kip</text>
-  <text x="346" y="268" font-size="11" fill="#72696a">Enter, the letter, or a click. No arrow keys.</text>
+  <rect x="44" y="250" width="100" height="26" rx="2" fill="none" stroke="#f9cc6c" stroke-width="1.5"/>
+  <text x="94" y="268" text-anchor="middle" fill="#fff1f3"><tspan fill="#adda78" font-weight="bold">K</tspan>eep both</text>
+  <rect x="156" y="250" width="100" height="26" rx="2" fill="none" stroke="#72696a"/>
+  <text x="206" y="268" text-anchor="middle" fill="#fff1f3"><tspan fill="#fd6883" font-weight="bold">O</tspan>verwrite</text>
+  <rect x="268" y="250" width="62" height="26" rx="2" fill="none" stroke="#72696a"/>
+  <text x="299" y="268" text-anchor="middle" fill="#fff1f3"><tspan fill="#f9cc6c" font-weight="bold">S</tspan>kip</text>
+  <text x="346" y="268" font-size="11" fill="#72696a">Arrows, Tab, hover, the letter, or a click.</text>
 </svg>

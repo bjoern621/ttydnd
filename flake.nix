@@ -28,11 +28,12 @@
       # Holds the watcher, for a kitty.conf written by hand.
       packages = forAllSystems (pkgs: {
         default = pkgs.runCommand "ttydnd" { } ''
-          install -Dm444 ${./kitty/drop.py} $out/share/ttydnd/drop.py
+          mkdir -p $out/share/ttydnd
+          install -m444 ${./kitty}/*.py $out/share/ttydnd/
         '';
       });
 
-      homeModules.default = import ./nix/home-module.nix { drop = ./kitty/drop.py; };
+      homeModules.default = import ./nix/home-module.nix { dir = ./kitty; };
 
       checks = forAllSystems (
         pkgs:
@@ -66,6 +67,8 @@
               pkgs.zsh
               pkgs.dash
               pkgs.busybox
+              # The dialog checks drive confirm.py against kitty's own TUI modules.
+              pkgs.kitty
             ];
           } ''
             cp -r ${./.}/. src && chmod -R +w src
@@ -74,6 +77,7 @@
 
           module =
             assert hasLine "watcher /nix/store";
+            assert pkgs.lib.hasInfix "/drop.py" kittyConf;
             assert hasLine "mouse_map left press ungrabbed mouse_selection drag_or_normal_select";
             assert example.config.home.shellAliases.lsh == "ls --hyperlink=auto";
             pkgs.runCommand "ttydnd-module-check" { } "touch $out";
