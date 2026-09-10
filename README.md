@@ -60,12 +60,17 @@ Watchers attach when a window is created, so open windows keep kitty's own drop 
 | --- | --- |
 | Local shell at a prompt | Confirm, then copy into the reported cwd |
 | Shell over ssh | Confirm, then send, then a desktop notification either way |
-| A name already exists | The dialog offers Rename or Overwrite, and names the clash |
+| A name already exists | The dialog offers Keep both, Overwrite or Skip, and names the clash |
 | Two dropped items share a basename | The second is suffixed, so a drop never loses an item |
 | A full-screen program owns the screen | Falls back to kitty's own handling, so `vim` is never typed at |
 | The remote does not answer in three seconds | Falls back to pasting the paths |
 
-Renaming counts up from `notes-1.txt` until the name is free, on either end.
+Keep both counts up from `notes-1.txt` until the name is free, on either end.
+The file already sitting there keeps its name and its content.
+Skip copies the items whose names were free and leaves the rest alone.
+
+The dialog takes Enter for the default, the highlighted letter, a click on a button, or Esc to copy nothing.
+kitty's ask kitten binds no arrow keys.
 
 ## Dragging files out
 

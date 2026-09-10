@@ -137,19 +137,26 @@ def notify(window, title, body):
 
 
 def ask(window, paths, names, free, destination, run):
-    """Confirm the drop, then hand run() the names to write."""
+    """Confirm the drop, then hand run() the paths and the names to write."""
     clashes = [n for n, f in zip(names, free) if n != f]
     message = f'Copy {counted(names)} ({size(total_size(paths))}) {destination}?\n\n{summarize(names)}'
     if len(clashes) == 1:
-        message += f'\n\n{clashes[0]} already exists.'
+        message += f'\n\n{clashes[0]} already exists.\nEsc cancels.'
     elif clashes:
-        message += f'\n\n{len(clashes)} names already exist.'
+        message += f'\n\n{len(clashes)} names already exist.\nEsc cancels.'
 
     def answered(answer):
         if answer in ('y', 'o'):
-            run(names)
-        elif answer == 'r':
-            run(free)
+            run(paths, names)
+        elif answer == 'k':
+            run(paths, free)
+        elif answer == 's':
+            # Only the items whose name was already free.
+            kept = [(p, n) for p, n, f in zip(paths, names, free) if n == f]
+            if kept:
+                run([p for p, _ in kept], [n for _, n in kept])
+            else:
+                notify(window, 'Files not copied', summarize(names))
         else:
             notify(window, 'Files not copied', summarize(names))
 
@@ -157,8 +164,8 @@ def ask(window, paths, names, free, destination, run):
     def show(timer_id):
         # The ask kitten requires each shortcut letter to occur in its own label.
         if clashes:
-            choices = ('r;green:Rename', 'o;red:Overwrite', 'c;yellow:Cancel')
-            default = 'r'
+            choices = ('k;green:Keep both', 'o;red:Overwrite', 's;yellow:Skip')
+            default = 'k'
         else:
             choices = ('y;green:Copy', 'c;red:Cancel')
             default = 'y'
@@ -219,7 +226,7 @@ def on_set_user_var(boss, window, data):
         return
     ask(window, entry['paths'], entry['names'], data['value'].split('/')[1:],
         'into the remote working directory',
-        lambda names: send_remote(window, entry['paths'], names))
+        lambda kept, chosen: send_remote(window, kept, chosen))
 
 
 def on_drop(self, drop):
@@ -236,7 +243,7 @@ def on_drop(self, drop):
     elif self.at_prompt:
         cwd = self.cwd_for_serialization
         ask(self, paths, names, resolve_local(cwd, names), f'into {cwd}',
-            lambda chosen: copy_local(self, cwd, paths, chosen))
+            lambda kept, chosen: copy_local(self, cwd, kept, chosen))
     else:
         self.original_on_drop(drop)
 

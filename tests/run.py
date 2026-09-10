@@ -165,6 +165,64 @@ def test_transfer(drop, tmp):
     check('echo stays suppressed', len(visible) < 64, True)
 
 
+def test_choices(drop, tmp):
+    """Each button writes a different set of names, so pin all three."""
+    source = os.path.join(tmp, 'choice-src')
+    os.makedirs(source)
+    for name in ('a.txt', 'b.txt'):
+        open(os.path.join(source, name), 'w').write('x')
+    dest = os.path.join(tmp, 'choice-dest')
+    os.makedirs(dest)
+    open(os.path.join(dest, 'a.txt'), 'w').write('old')
+
+    paths = [os.path.join(source, n) for n in ('a.txt', 'b.txt')]
+    names = drop.plan_names(paths)
+    free = drop.resolve_local(dest, names)
+    seen = {}
+
+    class Boss:
+        def __init__(self, answer):
+            self.answer = answer
+
+        def choose(self, message, callback, *choices, **kw):
+            seen['message'] = message
+            seen['choices'] = choices
+            seen['default'] = kw['default']
+            callback(self.answer)
+
+    drop.add_timer = lambda fn, delay, repeat: fn(0)
+    drop.notify = lambda window, title, body: seen.__setitem__('notified', title)
+
+    def run_with(answer):
+        written = []
+        drop.get_boss = lambda: Boss(answer)
+        seen.pop('notified', None)
+        drop.ask(None, paths, names, free, f'into {dest}',
+                 lambda p, n: written.append(([os.path.basename(x) for x in p], n)))
+        return written
+
+    check('keep both writes the free names', run_with('k'),
+          [(['a.txt', 'b.txt'], ['a-1.txt', 'b.txt'])])
+    check('overwrite writes the dropped names', run_with('o'),
+          [(['a.txt', 'b.txt'], ['a.txt', 'b.txt'])])
+    check('skip writes only what was free', run_with('s'), [(['b.txt'], ['b.txt'])])
+    check('esc writes nothing', run_with(''), [])
+    check('esc notifies', seen['notified'], 'Files not copied')
+    check('clash choices', seen['choices'],
+          ('k;green:Keep both', 'o;red:Overwrite', 's;yellow:Skip'))
+    check('keep both is the default', seen['default'], 'k')
+    check('message names the clash', 'a.txt already exists.' in seen['message'], True)
+    check('message offers a way out', 'Esc cancels.' in seen['message'], True)
+
+    # A drop with nothing to resolve keeps the plain pair.
+    drop.get_boss = lambda: Boss('y')
+    written = []
+    drop.ask(None, paths, names, names, f'into {dest}',
+             lambda p, n: written.append(n))
+    check('clean drop choices', seen['choices'], ('y;green:Copy', 'c;red:Cancel'))
+    check('clean drop writes every name', written, [['a.txt', 'b.txt']])
+
+
 def test_refusals(drop, tmp):
     for name in SHELLS:
         dest = os.path.join(tmp, f'garbage-{name}')
@@ -195,6 +253,7 @@ def main():
     with tempfile.TemporaryDirectory() as tmp:
         test_names(drop, tmp)
         test_transfer(drop, tmp)
+        test_choices(drop, tmp)
         test_refusals(drop, tmp)
     print()
     if failures:
