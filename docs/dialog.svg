@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 300" width="700" height="300" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13">
+  <rect width="700" height="300" fill="#fbfbfa"/>
+  <text x="20" y="26" font-size="12" fill="#6b6b6b">The confirmation, drawn by kitty's ask kitten over the window that received the drop.</text>
+
+  <rect x="20" y="44" width="660" height="236" rx="6" fill="#2d2a2e"/>
+  <circle cx="42" cy="66" r="5" fill="#fd6883"/>
+  <circle cx="60" cy="66" r="5" fill="#f9cc6c"/>
+  <circle cx="78" cy="66" r="5" fill="#adda78"/>
+  <text x="350" y="70" text-anchor="middle" font-size="12" fill="#72696a">Copy files</text>
+  <line x1="20" y1="84" x2="680" y2="84" stroke="#4a464b"/>
+
+  <text x="44" y="116" fill="#fff1f3">Copy 2 items (3.4 MB) into the remote working</text>
+  <text x="44" y="136" fill="#fff1f3">directory?</text>
+
+  <text x="44" y="172" fill="#85dacc">notes.txt, data</text>
+
+  <text x="44" y="208" fill="#f9cc6c">notes.txt already exists.</text>
+
+  <rect x="44" y="228" width="76" height="26" rx="4" fill="#3a4a34" stroke="#adda78"/>
+  <text x="82" y="246" text-anchor="middle" fill="#adda78"><tspan fill="#fff1f3" font-weight="bold">R</tspan>ename</text>
+  <rect x="132" y="228" width="100" height="26" rx="4" fill="#4a3234" stroke="#fd6883"/>
+  <text x="182" y="246" text-anchor="middle" fill="#fd6883"><tspan fill="#fff1f3" font-weight="bold">O</tspan>verwrite</text>
+  <rect x="244" y="228" width="76" height="26" rx="4" fill="#4a4434" stroke="#f9cc6c"/>
+  <text x="282" y="246" text-anchor="middle" fill="#f9cc6c"><tspan fill="#fff1f3" font-weight="bold">C</tspan>ancel</text>
+  <text x="336" y="246" font-size="11" fill="#72696a">Enter takes Rename. Esc cancels.</text>
+</svg>
