@@ -24,7 +24,7 @@ WRAP = 76
 # Seconds a probe waits before the drop falls back to kitty's own handling.
 TIMEOUT = 3
 
-# Seconds a result stays in the window title.
+# Seconds a result overlay stays. Enter, Esc or a click closes it earlier.
 LINGER = 4
 
 # stty -echo stops the remote tty echoing the payload back at double the traffic.
@@ -41,7 +41,7 @@ pending = {}
 # Window id to the summary of a transfer in flight.
 sending = {}
 
-# Window id to the override title in place before a result, and the timer restoring it.
+# Window id to the overlay showing its result, and the timer closing it.
 reports = {}
 
 
@@ -147,29 +147,41 @@ def progress(window, state):
 
 
 def report(window, text):
-    """Put text in the window title for a few seconds, then restore what was there."""
-    entry = reports.pop(window.id, None)
-    if entry:
-        remove_timer(entry['timer'])
-        previous = entry['previous']
-    else:
-        previous = window.override_title
-    window.set_title(text)
+    """Show text in an overlay on the window until LINGER runs out or the user closes it."""
     window_id = window.id
-    reports[window_id] = {
-        'previous': previous,
-        'timer': add_timer(lambda timer_id: restore(window_id), LINGER, False),
-    }
+    dismiss(window_id)
+    # overlay is None until the deferred show runs, and the timer is whichever is pending.
+    entry = {'overlay': None}
+
+    def closed(answer):
+        # A newer report owns the window by now, so a stale overlay going away changes nothing.
+        if reports.get(window_id) is entry:
+            dismiss(window_id)
+
+    # Deferred a tick: every caller runs inside a kitty callback, and the overlay reenters it.
+    def show(timer_id):
+        overlay = get_boss().choose(text, closed, 'o:OK', window=window, default='o', title='Copy files')
+        if overlay is None:
+            reports.pop(window_id, None)
+            return
+        entry['overlay'] = overlay.id
+        entry['timer'] = add_timer(lambda timer_id: dismiss(window_id), LINGER, False)
+
+    entry['timer'] = add_timer(show, 0, False)
+    reports[window_id] = entry
 
 
-def restore(window_id):
+def dismiss(window_id):
     entry = reports.pop(window_id, None)
-    window = get_boss().window_id_map.get(window_id)
-    if entry is None or window is None:
+    if entry is None:
         return
-    window.set_title(entry['previous'])
+    remove_timer(entry['timer'])
+    boss = get_boss()
+    if entry['overlay'] is not None:
+        boss.mark_window_for_close(entry['overlay'])
+    window = boss.window_id_map.get(window_id)
     # A probe or transfer started meanwhile keeps its spinner.
-    if window_id not in pending and window_id not in sending:
+    if window is not None and window_id not in pending and window_id not in sending:
         progress(window, 0)
 
 
@@ -194,8 +206,6 @@ def ask(window, paths, names, free, destination, run):
                 run([p for p, _ in kept], [n for _, n in kept])
             else:
                 report(window, 'Nothing copied')
-        else:
-            report(window, 'Nothing copied')
 
     # Deferred a tick: both callers run inside a kitty callback, and the overlay reenters it.
     def show(timer_id):

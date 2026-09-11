@@ -72,7 +72,8 @@ Skip copies the items whose names were free and leaves the rest alone.
 The dialog takes Enter for the default, the highlighted letter, a click on a button, or Esc to copy nothing.
 kitty's ask kitten binds no arrow keys.
 
-The result shows in the window title for a few seconds, then the earlier title comes back.
+The result shows in an overlay on the window for a few seconds, and Enter, Esc or a click closes it earlier.
+A cancelled drop shows no result.
 A probe or a transfer in flight shows as kitty's progress marker in the tab bar and its progress bar on the window edge, the same signal an OSC 9;4 report gives.
 
 ## Dragging files out
@@ -107,7 +108,7 @@ Python and the remote shell resolve free names independently, so it runs both an
 - The remote shell records one `stty -echo; base64 -d | tar -xf -` line per drop, unless that shell ignores space-prefixed commands.
 - `mosh` carries neither the reply nor the paste reliably.
 - tmux on the remote needs `allow-passthrough` for the reply, though the payload itself is fine.
-- `Window.on_drop`, the window title and the progress marker are kitty internals, so a kitty release can move them.
+- `Window.on_drop` and the progress marker are kitty internals, so a kitty release can move them.
 
 ## Porting
 

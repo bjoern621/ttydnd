@@ -207,7 +207,7 @@ def test_choices(drop, tmp):
           [(['a.txt', 'b.txt'], ['a.txt', 'b.txt'])])
     check('skip writes only what was free', run_with('s'), [(['b.txt'], ['b.txt'])])
     check('esc writes nothing', run_with(''), [])
-    check('esc reports nothing copied', seen['reported'], 'Nothing copied')
+    check('esc shows no result', 'reported' in seen, False)
     check('clash choices', seen['choices'],
           ('k;green:Keep both', 'o;red:Overwrite', 's;yellow:Skip'))
     check('keep both is the default', seen['default'], 'k')
@@ -222,31 +222,66 @@ def test_choices(drop, tmp):
     check('clean drop choices', seen['choices'], ('y;green:Copy', 'c;red:Cancel'))
     check('clean drop writes every name', written, [['a.txt', 'b.txt']])
 
+    # Skip with every name taken has nothing left to write.
+    drop.get_boss = lambda: Boss('s')
+    drop.ask(None, paths[:1], names[:1], free[:1], f'into {dest}', lambda p, n: None)
+    check('skip with nothing free reports it', seen['reported'], 'Nothing copied')
+
 
 def test_reports(drop):
-    """A second result inside the linger keeps the title from before the first."""
+    """A second result replaces the first overlay, and a stale overlay closing leaves the new one alone."""
     timers = []
     removed = []
+    closed = []
+    cleared = []
+    shown = []
     drop.add_timer = lambda fn, delay, repeat: timers.append(fn) or len(timers)
     drop.remove_timer = removed.append
-    drop.progress = lambda window, state: None
+    drop.progress = lambda window, state: cleared.append(state)
 
-    class Window:
-        id = 7
-        override_title = 'mine'
+    class Boss:
+        window_id_map = {}
 
-        def set_title(self, title):
-            self.override_title = title
+        def choose(self, message, callback, *choices, **kw):
+            shown.append((message, callback, choices, kw['default']))
+            return types.SimpleNamespace(id=100 + len(shown))
 
-    window = Window()
-    drop.get_boss = lambda: types.SimpleNamespace(window_id_map={7: window})
+        def mark_window_for_close(self, window_id):
+            closed.append(window_id)
+
+    boss = Boss()
+    window = types.SimpleNamespace(id=7)
+    boss.window_id_map[7] = window
+    drop.get_boss = lambda: boss
+
     drop.report(window, 'Copied a.txt')
+    timers[-1](1)
+    check('result shows as an overlay with one button',
+          (shown[0][0], shown[0][2], shown[0][3]), ('Copied a.txt', ('o:OK',), 'o'))
     drop.report(window, 'Copied b.txt')
-    check('second report cancels the first timer', removed, [1])
-    check('title shows the latest result', window.override_title, 'Copied b.txt')
-    timers[-1](2)
-    check('restore brings the earlier title back', window.override_title, 'mine')
-    check('restore forgets the window', drop.reports, {})
+    check('second report closes the first overlay', (removed, closed), ([2], [101]))
+    timers[-1](3)
+    shown[0][1]('')
+    check('stale overlay closing leaves the new one', (drop.reports[7]['overlay'], closed), (102, [101]))
+    drop.sending[7] = 'c.txt'
+    timers[-1](4)
+    check('linger closes the overlay', closed, [101, 102])
+    check('a transfer in flight keeps its marker', cleared, [0])
+    del drop.sending[7]
+    shown[1][1]('')
+    check('closed overlay is forgotten', (drop.reports, closed), ({}, [101, 102]))
+
+    drop.report(window, 'Copied c.txt')
+    timers[-1](5)
+    shown[2][1]('o')
+    check('enter closes the overlay early', (removed[-1], closed[-1]), (6, 103))
+    check('closing clears the marker once idle', cleared, [0, 0])
+
+    drop.report(window, 'Copied d.txt')
+    drop.report(window, 'Copied e.txt')
+    check('a report replaced before showing drops its timer', (removed[-1], closed[-1]), (7, 103))
+    timers[-1](8)
+    check('only the later report shows', shown[-1][0], 'Copied e.txt')
 
 
 def test_refusals(drop, tmp):
