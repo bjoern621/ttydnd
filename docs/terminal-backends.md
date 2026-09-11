@@ -1,7 +1,8 @@
 # Writing a terminal backend
 
-A backend is the drop domain for one terminal: it catches the gesture, decides whether the window
-can take it, and offers the port the confirm and copy domains reach the terminal through.
+A backend is the drop domain for one terminal:
+it catches the gesture, decides whether the window can take it,
+and offers the port the confirm and copy domains reach the terminal through.
 This page is the code contract for writing one.
 Where the domain sits, and what reaches it: [architecture.md](architecture.md).
 
@@ -10,12 +11,11 @@ Where the domain sits, and what reaches it: [architecture.md](architecture.md).
 - an event when files are dropped on a window
 - a way to write to the child pty
 - an event when `OSC 1337 ; SetUserVar` arrives
-- a way to tell that a full-screen program owns the screen, so a drop onto `vim` is never answered
-  with typing
+- a way to tell that a full-screen program owns the screen, so a drop onto one keeps the terminal's own handling
 
 kitty supplies all four.
 WezTerm supplies the first three through `user-dropped-paths` and `user-var-changed`.
-A terminal with no scripting hook hosts no backend at all.
+A terminal with no scripting hook hosts no backend.
 
 ## What a backend calls
 
@@ -25,15 +25,14 @@ ttydnd.answered(terminal_id, value)    # a user var the destination set, for the
 ttydnd.busy(terminal_id)               # True while a transport owns the window's marker
 ```
 
-Everything else in the package belongs to a domain the backend does not reach into.
+The rest of the package belongs to the other two domains.
 
 ## The destination a backend builds
 
 `Destination(terminal, kind, path)` is what the backend knows about where the files go.
 
 - `kind` is `directory` for a path this process can write, with `path` naming it.
-- `kind` is `session` for a shell the terminal types at, whose working directory only the shell
-  knows.
+- `kind` is `session` for a shell the terminal types at, whose working directory only the shell knows.
 - `terminal` is the port below.
 
 A backend that can tell more about a session, such as the host a connection could reach on its own,
@@ -59,5 +58,5 @@ Every dialog is opened from a deferral, since a backend runs inside the terminal
 
 `fallback` hands the drop back so the terminal does whatever it does with a dropped path on its own,
 which for kitty is pasting it at the prompt.
-That is the answer to a full-screen program, a shell busy running something, and a destination that
-never replies.
+That is the answer to a full-screen program, a shell busy running something,
+and a destination that never replies.

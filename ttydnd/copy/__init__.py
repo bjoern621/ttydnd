@@ -11,7 +11,7 @@ A plan is a (source path, name at the destination) pair per item kept.
 Free names follow ttydnd.names, which the transport applies at the far end.
 Both calls return a handle taking the destination's answers through reply(value),
 or None when the transport finished inside the call.
-Which transport runs, and what a new one owes: docs/copy-plugins.md.
+Which transport runs, and what a new one owes: docs/copy-transports.md.
 """
 
 from . import local, tty
