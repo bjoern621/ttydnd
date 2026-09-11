@@ -35,10 +35,10 @@ RECEIVE = (
 # Window id to the drop awaiting a probe reply.
 pending = {}
 
-# Window id to the summary of a transfer in flight.
-sending = {}
+# Window ids with a transfer in flight.
+sending = set()
 
-# Window id to the result overlay showing on it.
+# Window id to the failure overlay showing on it.
 reports = {}
 
 # Overlay id to the window beneath, for every dialog opened here.
@@ -101,12 +101,6 @@ def resolve_local(cwd, names):
     return free
 
 
-def summarize(names):
-    if len(names) > 3:
-        return ', '.join(names[:3]) + f' and {len(names) - 3} more'
-    return ', '.join(names)
-
-
 def total_size(paths):
     total = 0
     for p in paths:
@@ -143,7 +137,7 @@ def progress(window, state):
 
 
 def report(window, text):
-    """Show text in an overlay on the window until Enter, Esc or a click closes it."""
+    """Show a failure in an overlay on the window until Enter, Esc or a click closes it."""
     window_id = window.id
     dismiss(window_id)
     entry = {'overlay': None}
@@ -194,8 +188,6 @@ def ask(window, paths, names, free, where, run):
         if i == total:
             if chosen:
                 run([p for p, _ in chosen], [n for _, n in chosen])
-            else:
-                report(window, 'Nothing copied')
             return
         path, name, spare = paths[i], names[i], free[i]
         item = f'{name} ({size(total_size([path]))})'
@@ -240,13 +232,14 @@ def copy_local(window, cwd, paths, names):
             else:
                 shutil.copy2(p, dest)
     except OSError as err:
+        progress(window, 2)
         report(window, f'Could not copy {name}. {err.strerror or err}')
         return
-    report(window, f'Copied {summarize(names)}')
+    progress(window, 0)
 
 
 def send_remote(window, paths, names):
-    sending[window.id] = summarize(names)
+    sending.add(window.id)
     progress(window, 3)
     window.write_to_child(RECEIVE)
     text = base64.b64encode(tarball(paths, names))
@@ -268,15 +261,13 @@ def on_set_user_var(boss, window, data):
     if data['key'] != 'kdrop':
         return
     if data['value'] in ('done', 'fail'):
-        summary = sending.pop(window.id, '')
-        if not summary:
-            return
-        if data['value'] == 'done':
-            progress(window, 0)
-            report(window, f'Copied {summary}')
-        else:
-            progress(window, 2)
-            report(window, 'The remote could not unpack the files')
+        if window.id in sending:
+            sending.remove(window.id)
+            if data['value'] == 'done':
+                progress(window, 0)
+            else:
+                progress(window, 2)
+                report(window, 'The remote could not unpack the files')
         return
     entry = pending.pop(window.id, None)
     if entry is None:
@@ -290,7 +281,7 @@ def on_set_user_var(boss, window, data):
 def on_drop(self, drop):
     base_id = dialogs.get(self.id)
     if base_id is not None:
-        # A result overlay makes way for the drop. A decision still open holds it.
+        # A failure overlay makes way for the drop. A decision still open holds it.
         base = get_boss().window_id_map.get(base_id)
         if base is None or reports.get(base_id, {}).get('overlay') != self.id:
             return None

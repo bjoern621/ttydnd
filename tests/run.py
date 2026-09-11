@@ -228,16 +228,15 @@ def test_choices(drop, tmp):
           [(['a.txt', 'b.txt'], ['a.txt', 'b.txt'])])
     check('skip leaves that item alone', run_with(['s', 'y']), [(['b.txt'], ['b.txt'])])
     check('skipping everything writes nothing', run_with(['s', 's']), [])
-    check('skipping everything reports it', seen['reported'], 'Nothing copied')
+    check('skipping everything stays quiet', 'reported' in seen, False)
     check('esc after an answer writes nothing', run_with(['k', '']), [])
-    check('esc shows no result', 'reported' in seen, False)
     check('esc on the first item stops there', (run_with(['']), len(seen['dialogs'])), ([], 1))
     check('a lone item carries no count', run_with(['y'], slice(1, 2)) and seen['dialogs'][0][0],
           f'Copy b.txt (1 kB) into\n{dest}?\n\nEsc cancels the drop.')
 
 
 def test_reports(drop):
-    """A result stays until closed, a newer one replaces it, and a drop onto it goes through."""
+    """A failure stays until closed, a newer one replaces it, and a drop onto it goes through."""
     timers = []
     shown = []
     closed = []
@@ -260,34 +259,34 @@ def test_reports(drop):
     boss.window_id_map[7] = window
     drop.get_boss = lambda: boss
 
-    drop.report(window, 'Copied a.txt')
+    drop.report(window, 'Could not copy a.txt')
     timers[-1](1)
-    check('result shows as an overlay with one button',
-          (shown[0][0], shown[0][2], shown[0][3]), ('Copied a.txt', ('o:OK',), 'o'))
+    check('a failure shows as an overlay with one button',
+          (shown[0][0], shown[0][2], shown[0][3]), ('Could not copy a.txt', ('o:OK',), 'o'))
     check('nothing closes it on its own', len(timers), 1)
-    drop.report(window, 'Copied b.txt')
+    drop.report(window, 'Could not copy b.txt')
     check('second report closes the first overlay', closed, [101])
     timers[-1](2)
     shown[0][1]('')
     check('stale overlay closing leaves the new one', (drop.reports[7]['overlay'], closed), (102, [101]))
-    drop.sending[7] = 'c.txt'
+    drop.sending.add(7)
     shown[1][1]('o')
     check('enter closes the overlay', (drop.reports, closed), ({}, [101, 102]))
     check('a transfer in flight keeps its marker', cleared, [0])
-    del drop.sending[7]
+    drop.sending.remove(7)
 
-    drop.report(window, 'Copied c.txt')
-    drop.report(window, 'Copied d.txt')
+    drop.report(window, 'Could not copy c.txt')
+    drop.report(window, 'Could not copy d.txt')
     timers[-2](3)
     timers[-1](4)
-    check('a report replaced before showing never opens', [s[0] for s in shown[2:]], ['Copied d.txt'])
-    check('the result overlay is known as a dialog', drop.dialogs, {103: 7})
+    check('a report replaced before showing never opens', [s[0] for s in shown[2:]], ['Could not copy d.txt'])
+    check('the failure overlay is known as a dialog', drop.dialogs, {103: 7})
 
     window.screen = types.SimpleNamespace(is_using_alternate_linebuf=lambda: False)
     window.original_on_drop = lambda d: 'pasted'
-    check('a drop onto the result lands on the window beneath',
+    check('a drop onto the failure lands on the window beneath',
           drop.on_drop(types.SimpleNamespace(id=103), {}), 'pasted')
-    check('the result made way', (drop.reports, drop.dialogs, closed[-1]), ({}, {}, 103))
+    check('the failure made way', (drop.reports, drop.dialogs, closed[-1]), ({}, {}, 103))
     drop.dialogs[104] = 7
     check('a drop onto an open decision waits', drop.on_drop(types.SimpleNamespace(id=104), {}), None)
     drop.dialogs.clear()

@@ -34,8 +34,8 @@
   <line x1="640" y1="356" x2="128" y2="356" stroke="#3f6f4f" stroke-width="2" marker-end="url(#a)"/>
   <text x="376" y="350" text-anchor="middle" fill="#3f6f4f">SetUserVar=kdrop=done, or fail on tar's exit status</text>
 
-  <rect x="230" y="374" width="292" height="30" rx="4" fill="#f3efe6" stroke="#b8ae97"/>
-  <text x="376" y="394" text-anchor="middle" fill="#5a4a2b">result dialog, either way</text>
+  <rect x="216" y="374" width="320" height="30" rx="4" fill="#f3efe6" stroke="#b8ae97"/>
+  <text x="376" y="394" text-anchor="middle" fill="#5a4a2b">marker clears, or a dialog on failure</text>
 
   <defs>
     <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">

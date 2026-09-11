@@ -48,10 +48,7 @@
                   stateVersion = "24.11";
                 };
                 programs.kitty.enable = true;
-                programs.ttydnd = {
-                  enable = true;
-                  hyperlinkAlias = "lsh";
-                };
+                programs.ttydnd.enable = true;
               }
             ];
           };
@@ -75,7 +72,7 @@
           module =
             assert hasLine "watcher /nix/store";
             assert hasLine "mouse_map left press ungrabbed mouse_selection drag_or_normal_select";
-            assert example.config.home.shellAliases.lsh == "ls --hyperlink=auto";
+            assert example.config.home.shellAliases.ls == "ls --hyperlink=auto";
             pkgs.runCommand "ttydnd-module-check" { } "touch $out";
         }
       );

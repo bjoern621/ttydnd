@@ -20,11 +20,13 @@ in
 
     hyperlinkAlias = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
-      default = null;
+      default = "ls";
       example = "lsh";
       description = ''
         Name for an `ls --hyperlink=auto` alias, which marks file names as drag sources.
-        Null adds no alias, leaving `ls` untouched.
+        Aliases spelled in terms of `ls`, such as `ll`, pick the flag up through the shell's own alias expansion.
+        An alias of the same name set elsewhere wins.
+        Null adds no alias.
       '';
     };
   };
@@ -46,7 +48,7 @@ in
     '';
 
     home.shellAliases = lib.mkIf (cfg.hyperlinkAlias != null) {
-      ${cfg.hyperlinkAlias} = "ls --hyperlink=auto";
+      ${cfg.hyperlinkAlias} = lib.mkDefault "ls --hyperlink=auto";
     };
   };
 }
