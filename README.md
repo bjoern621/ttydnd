@@ -1,41 +1,31 @@
 # ttydnd
 
-Files dropped on a kitty window land in the shell's working directory.
-Over ssh they land on the remote, which needs nothing installed.
+Drag and drop for the kitty terminal.
+A file dropped on a window lands in the directory the shell is in.
+Over ssh it lands on the remote host, in that shell's directory, with nothing installed there.
 
 ![License GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue)
 ![kitty 0.48+](https://img.shields.io/badge/kitty-0.48%2B-green)
 
 ![Dropping a file on a shell over ssh, and the dialog that asks before writing](docs/dialog.svg)
 
-The files ride the tty that ssh already owns, as a tar stream typed at the prompt.
-No agent, no port, no second connection, nothing written to the remote except the dropped files.
-Whatever shell answers on the far side takes the drop, so a nested ssh or a `sudo -i` beyond it works the same.
+One dialog per item, and the files are there.
 
-## Features
+## What it does
 
-- Files and directories land in the working directory the shell reports, with their permissions.
-- An ssh session is the whole transport, so the remote needs a POSIX shell with `base64` and `tar`.
-- Nothing is written until every item is answered, and a name clash offers Keep both, Overwrite or Skip.
-- An unknown host costs nothing to try, since a shell that cannot receive never sees the files.
-- A file name in the output is a drag source, and carries the file out to another window or a file manager.
-- A full-screen program keeps kitty's own drop behaviour, so `vim` is never typed at.
-
-## Requirements
-
-| Where | Needs |
-| --- | --- |
-| Local | kitty 0.48 or newer, with shell integration on |
-| Remote | a POSIX shell plus `base64`, `tar`, `cat`, `stty` and `printf` |
-
-Shell integration is kitty's default, and it reports the working directory and whether the shell sits at a prompt.
-Every remote requirement ships in coreutils and in busybox, so a stock Linux, macOS or Alpine host already qualifies.
-Verified on `sh`, `bash`, `zsh`, `dash` and busybox `ash`.
+- Files and directories land where the prompt is, with their permissions intact, so a deep path on a remote host takes one drag.
+- Any ssh host receives.
+  A POSIX shell with `tar` and `base64` is all it takes, and every stock Linux, macOS or Alpine host ships that.
+- The files travel inside the ssh session that is already open, so a jump host, a nested ssh or a `sudo -i` on the far side receives the same way.
+- Safe to try on any host.
+  A shell that cannot receive never sees the files, and nothing is written until every item is answered.
+- A taken name gets its own dialog before anything is written: Keep both, Overwrite or Skip, with the free name spelled out.
+- A file name on screen carries its file back out on a drag, to another window or to a file manager.
+- A full-screen program such as `vim` keeps kitty's own drop behaviour.
 
 ## Install
 
-The watcher is a Python file kitty loads per window, and it finds the rest of ttydnd in the package beside it.
-Watchers attach when a window is created, so open windows keep kitty's own drop behaviour until the next one opens.
+Needs kitty 0.48 or newer with shell integration on, which is kitty's default.
 
 ### Home Manager
 
@@ -62,6 +52,42 @@ EOF
 
 `nix build github:bjoern621/ttydnd` puts the same pair under `result/share/ttydnd/` for a config written by hand.
 
+Windows opened after a config reload take drops.
+`ctrl+shift+f5` reloads the config on Linux and `ctrl+cmd+,` on macOS.
+
+## Dropping files in
+
+A drop on a shell sitting at its prompt opens one dialog per item, naming the item and its size, and asking Copy or Skip.
+The last answer starts the copy, and the files land in the working directory the shell reports.
+Over ssh they land on the host the shell is logged into, in its working directory.
+A finished copy is silent.
+A failure shows in an overlay on the window until Enter, Esc or a click closes it.
+
+Where a name is already taken, that item's dialog offers Keep both, Overwrite or Skip, and spells out the free name.
+Keep both counts up from `notes-1.txt` until a name is free, and the file already there keeps its name and its content.
+Overwrite on a directory merges into it, replacing the files whose names clash and leaving the rest.
+Two dropped items sharing a basename get the second one suffixed the same way, so a drop never loses an item.
+Esc on any item cancels the whole drop.
+
+The dialog takes Enter for the default, the highlighted letter, or a click on a button.
+A drop onto an open dialog waits for that dialog's answer.
+A drop onto a failure overlay closes it and goes ahead.
+kitty's progress marker in the tab bar, and its progress bar on the window edge, show while a transfer runs.
+
+A shell busy running a command, and a full-screen program such as `vim`, get kitty's own drop behaviour: the paths pasted as text.
+A symlink dropped on a local shell copies what it points at.
+Over ssh the link itself travels.
+
+## Dragging files out
+
+A drag that starts on a file name in the output carries that file to another window or to a file manager.
+
+The name has to be a hyperlink for there to be anything to drag.
+`ls --hyperlink=auto` marks its names, and an alias spelled in terms of `ls`, such as `ll`, picks the flag up through the shell's own alias expansion.
+`auto` limits the markup to a terminal, so pipes and scripts read plain output.
+`kitten hyperlinked_grep` carries the hyperlinks already.
+`--hyperlink` needs GNU coreutils 8.30 or newer.
+
 ## Configuration
 
 A Home Manager option and a hand-written line reach the same place.
@@ -71,97 +97,40 @@ A Home Manager option and a hand-written line reach the same place.
 | The watcher | `programs.ttydnd.enable` | the `watcher` line in `kitty.conf` |
 | Carrying a file out on a drag | `programs.ttydnd.dragOut`, on by default | the `mouse_map` line in `kitty.conf` |
 | File names as drag sources | `programs.ttydnd.hyperlinkAlias`, `"ls"` by default | `alias ls='ls --hyperlink=auto'` in a shell rc |
-| Seconds a probe waits for the remote | `programs.ttydnd.timeout`, `3` by default | `TIMEOUT` in `ttydnd/copy/tty.py` |
+| Seconds to wait for a remote's answer | `programs.ttydnd.timeout`, `3` by default | `TIMEOUT` in `ttydnd/copy/tty.py` |
 
-A link with hundreds of milliseconds of latency wants a longer timeout, since the reply arrives behind the shell's echo of the probe.
+A slow link wants a longer timeout.
 
 `hyperlinkAlias = null` adds no alias, which is what a BSD `ls` wants.
 Any other value names the alias instead of `ls`.
 An alias of the same name set elsewhere wins.
 
-## Dropping files in
+## Where it works
 
-| Situation | Result |
+| Where | Needs |
 | --- | --- |
-| Local shell at a prompt | A dialog per item, then a copy into the working directory the shell reports |
-| Shell over ssh | A dialog per item, then a tar stream typed at the prompt |
-| Local shell busy running something | kitty's own handling, which pastes the paths |
-| A full-screen program owns the screen | kitty's own handling, so `vim` is never typed at |
-| A name is already taken | That item's dialog offers Keep both, Overwrite or Skip, and names the free name |
-| Two dropped items share a basename | The watcher suffixes the second, so a drop never loses an item |
-| The remote stays silent past the timeout | kitty's own handling, and an overlay saying so |
+| Local | kitty 0.48 or newer, with shell integration on |
+| Remote | a POSIX shell plus `base64`, `tar`, `cat`, `stty` and `printf` |
 
-A drop counts as remote when `ssh` is one of the window's foreground processes.
+Shell integration tells the watcher the working directory and whether the shell sits at a prompt.
+`sh`, `bash`, `zsh`, `dash` and busybox `ash` all receive.
 
-Each item gets a dialog naming it and its size, before anything is written.
-A free name asks Copy or Skip.
-Keep both counts up from `notes-1.txt` until the name is free, on either end.
-The file already sitting there keeps its name and its content.
-Overwrite on a directory merges into it, replacing the files whose names clash and leaving the rest.
-Skip leaves that item alone.
-Esc on any item cancels the whole drop.
+A window whose foreground command is `ssh` counts as remote, whatever shell answers on the far side.
+A window running another remote shell, such as `mosh` or `docker exec`, gets kitty's own drop behaviour.
+tmux on the remote passes the answer back with `allow-passthrough on`.
 
-The dialog takes Enter for the default, the highlighted letter, a click on a button, or Esc.
-kitty's ask kitten binds no arrow keys.
+The lines typed at the remote start with a space, so a shell set to ignore space-prefixed commands keeps them out of history.
+That setting is `HISTCONTROL=ignorespace` in bash and `setopt histignorespace` in zsh.
 
-A copy that lands shows nothing.
-A failure shows in an overlay on the window until Enter, Esc or a click closes it.
-A drop onto that overlay closes it and goes ahead.
-A drop onto an open dialog waits for that dialog to be answered.
+Transfers run at a few megabytes per second, so a source tree or a folder of photos crosses in seconds.
+Gigabytes are a job for `scp`.
 
-A probe or a transfer in flight shows as kitty's progress marker in the tab bar and its progress bar on the window edge.
-An OSC 9;4 report drives the same signal.
-The marker clears once the files land, and marks an error when a copy or an unpack fails.
+## Under the hood
 
-## Dragging files out
-
-A drag that starts on a hyperlink carries that file to another window or to a file manager.
-
-Output has to carry the hyperlinks for there to be anything to drag.
-`ls --hyperlink=auto` marks its names, and an alias spelled in terms of `ls`, such as `ll`, picks the flag up through the shell's own alias expansion.
-`auto` limits the markup to a terminal, so pipes and scripts read the plain output.
-`kitten hyperlinked_grep` carries the hyperlinks already.
-`--hyperlink` needs GNU coreutils 8.30 or newer.
-
-## How it reaches a remote
-
-![The three phases of a remote drop](docs/flow.svg)
-
-A probe goes first and answers two questions in one round trip: whether this end can receive, and which name is free for each dropped name.
-Silence means the files are never sent, so pointing at an unknown host is safe.
-
-[docs/protocol.md](docs/protocol.md) has the wire format, and the reasons behind the parts that look arbitrary.
-
-## Limits
-
-- A drop counts as remote only when `ssh` is a foreground process, so `mosh`, `docker exec` and a serial console never take the remote path.
-- Throughput is roughly 1 to 5 MB/s over ssh, so a multi-gigabyte drop is the wrong tool.
-- A local drop copies what a symlink points at, and a remote drop keeps the link.
-- The remote shell records the probe line, and the receive line once an item is confirmed. A leading space keeps both out of history in bash with `HISTCONTROL=ignorespace` and zsh with `setopt histignorespace`.
-- tmux on the remote needs `allow-passthrough` before the probe's answer gets back, though the files themselves travel fine.
-- `Window.on_drop` and the progress marker are kitty internals, so a kitty release can move them.
-
-## Tests
-
-```sh
-nix flake check
-```
-
-The suite drives real shells on real ptys, using whichever of `sh`, `bash`, `zsh`, `dash` and `ash` are on `PATH`.
-The flake check adds the Home Manager module to that.
-`python3 tests/run.py` runs the suite alone, and `nix develop` provides the shells.
-
-Python and the remote shell resolve free names independently.
-The suite runs both and compares them, since a mismatch would make the dialog lie.
-
-## Porting
-
-Dropping, confirming and copying are three domains, and [docs/architecture.md](docs/architecture.md) states what crosses between them.
-A terminal backend is the first of them, and [docs/terminal-backends.md](docs/terminal-backends.md) lists what it needs from its terminal.
-WezTerm has all but the alternate screen check through `user-dropped-paths` and `user-var-changed`.
-Terminals with no scripting hook, such as foot, alacritty and ghostty, cannot host the watcher.
+The files travel as a tar archive typed at the remote prompt, over the tty that ssh already owns.
+A one-line probe goes first and comes back with whether the host can receive and which names are free.
+[docs/protocol.md](docs/protocol.md) has the wire format, [docs/architecture.md](docs/architecture.md) the parts and what crosses between them, and [docs/development.md](docs/development.md) the test suite.
 
 ## License
 
 GPL-3.0-only.
-The watcher imports kitty's Python modules, and kitty is GPL-3.0.
