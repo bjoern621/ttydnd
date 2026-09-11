@@ -258,6 +258,11 @@ def expire(window_id):
 
 
 def on_set_user_var(boss, window, data):
+    # A window keeps the watcher it was created with, while on_drop is the newest copy of this file.
+    # An older copy hands the reply on, so probe and answer meet in one copy's state.
+    current = getattr(Window, 'ttydnd_user_var', None)
+    if current is not None and current is not on_set_user_var:
+        return current(boss, window, data)
     if data['key'] != 'kdrop':
         return
     if data['value'] in ('done', 'fail'):
@@ -310,3 +315,4 @@ def on_drop(self, drop):
 # A config reload re-runs this file, so keep the first unpatched method.
 Window.original_on_drop = getattr(Window, 'original_on_drop', Window.on_drop)
 Window.on_drop = on_drop
+Window.ttydnd_user_var = on_set_user_var
