@@ -166,7 +166,7 @@ def test_transfer(drop, tmp):
 
 
 def test_choices(drop, tmp):
-    """Each button writes a different set of names, so pin all three."""
+    """Each item gets its own dialog, and nothing is written before the last answer."""
     source = os.path.join(tmp, 'choice-src')
     os.makedirs(source)
     for name in ('a.txt', 'b.txt'):
@@ -181,62 +181,68 @@ def test_choices(drop, tmp):
     seen = {}
 
     class Boss:
-        def __init__(self, answer):
-            self.answer = answer
+        window_id_map = {}
+
+        def __init__(self):
+            self.pending = []
+            self.dialogs = []
 
         def choose(self, message, callback, *choices, **kw):
-            seen['message'] = message
-            seen['choices'] = choices
-            seen['default'] = kw['default']
-            callback(self.answer)
+            self.dialogs.append((message, choices, kw['default']))
+            self.pending.append(callback)
+            return types.SimpleNamespace(id=len(self.dialogs))
+
+        def mark_window_for_close(self, window_id):
+            pass
 
     drop.add_timer = lambda fn, delay, repeat: fn(0)
     drop.report = lambda window, text: seen.__setitem__('reported', text)
+    window = types.SimpleNamespace(id=7)
 
-    def run_with(answer):
-        written = []
-        drop.get_boss = lambda: Boss(answer)
+    def run_with(answers, items=slice(None)):
+        boss = Boss()
+        drop.get_boss = lambda: boss
         seen.pop('reported', None)
-        drop.ask(None, paths, names, free, f'into {dest}',
+        written = []
+        drop.ask(window, paths[items], names[items], free[items], dest,
                  lambda p, n: written.append(([os.path.basename(x) for x in p], n)))
+        # Answers arrive one per dialog, the way kitty delivers them after each overlay closes.
+        for answer in answers:
+            boss.pending.pop(0)(answer)
+        seen['dialogs'] = boss.dialogs
         return written
 
-    check('keep both writes the free names', run_with('k'),
+    check('keep both then copy writes the spare name', run_with(['k', 'y']),
           [(['a.txt', 'b.txt'], ['a-1.txt', 'b.txt'])])
-    check('overwrite writes the dropped names', run_with('o'),
+    check('clash dialog names the item and the spare',
+          seen['dialogs'][0],
+          (f'a.txt (1 kB) already exists in\n{dest}.\nKeep both writes a-1.txt.\n\n'
+           'Item 1 of 2. Esc cancels the drop.',
+           ('k;green:Keep both', 'o;red:Overwrite', 's;yellow:Skip'), 'k'))
+    check('free dialog asks copy or skip',
+          seen['dialogs'][1],
+          (f'Copy b.txt (1 kB) into\n{dest}?\n\nItem 2 of 2. Esc cancels the drop.',
+           ('y;green:Copy', 's;yellow:Skip'), 'y'))
+    check('answered dialogs are forgotten', drop.dialogs, {})
+    check('overwrite writes the dropped name', run_with(['o', 'y']),
           [(['a.txt', 'b.txt'], ['a.txt', 'b.txt'])])
-    check('skip writes only what was free', run_with('s'), [(['b.txt'], ['b.txt'])])
-    check('esc writes nothing', run_with(''), [])
+    check('skip leaves that item alone', run_with(['s', 'y']), [(['b.txt'], ['b.txt'])])
+    check('skipping everything writes nothing', run_with(['s', 's']), [])
+    check('skipping everything reports it', seen['reported'], 'Nothing copied')
+    check('esc after an answer writes nothing', run_with(['k', '']), [])
     check('esc shows no result', 'reported' in seen, False)
-    check('clash choices', seen['choices'],
-          ('k;green:Keep both', 'o;red:Overwrite', 's;yellow:Skip'))
-    check('keep both is the default', seen['default'], 'k')
-    check('message names the clash', 'a.txt already exists.' in seen['message'], True)
-    check('message offers a way out', 'Esc cancels.' in seen['message'], True)
-
-    # A drop with nothing to resolve keeps the plain pair.
-    drop.get_boss = lambda: Boss('y')
-    written = []
-    drop.ask(None, paths, names, names, f'into {dest}',
-             lambda p, n: written.append(n))
-    check('clean drop choices', seen['choices'], ('y;green:Copy', 'c;red:Cancel'))
-    check('clean drop writes every name', written, [['a.txt', 'b.txt']])
-
-    # Skip with every name taken has nothing left to write.
-    drop.get_boss = lambda: Boss('s')
-    drop.ask(None, paths[:1], names[:1], free[:1], f'into {dest}', lambda p, n: None)
-    check('skip with nothing free reports it', seen['reported'], 'Nothing copied')
+    check('esc on the first item stops there', (run_with(['']), len(seen['dialogs'])), ([], 1))
+    check('a lone item carries no count', run_with(['y'], slice(1, 2)) and seen['dialogs'][0][0],
+          f'Copy b.txt (1 kB) into\n{dest}?\n\nEsc cancels the drop.')
 
 
 def test_reports(drop):
-    """A second result replaces the first overlay, and a stale overlay closing leaves the new one alone."""
+    """A result stays until closed, a newer one replaces it, and a drop onto it goes through."""
     timers = []
-    removed = []
+    shown = []
     closed = []
     cleared = []
-    shown = []
     drop.add_timer = lambda fn, delay, repeat: timers.append(fn) or len(timers)
-    drop.remove_timer = removed.append
     drop.progress = lambda window, state: cleared.append(state)
 
     class Boss:
@@ -258,30 +264,33 @@ def test_reports(drop):
     timers[-1](1)
     check('result shows as an overlay with one button',
           (shown[0][0], shown[0][2], shown[0][3]), ('Copied a.txt', ('o:OK',), 'o'))
+    check('nothing closes it on its own', len(timers), 1)
     drop.report(window, 'Copied b.txt')
-    check('second report closes the first overlay', (removed, closed), ([2], [101]))
-    timers[-1](3)
+    check('second report closes the first overlay', closed, [101])
+    timers[-1](2)
     shown[0][1]('')
     check('stale overlay closing leaves the new one', (drop.reports[7]['overlay'], closed), (102, [101]))
     drop.sending[7] = 'c.txt'
-    timers[-1](4)
-    check('linger closes the overlay', closed, [101, 102])
+    shown[1][1]('o')
+    check('enter closes the overlay', (drop.reports, closed), ({}, [101, 102]))
     check('a transfer in flight keeps its marker', cleared, [0])
     del drop.sending[7]
-    shown[1][1]('')
-    check('closed overlay is forgotten', (drop.reports, closed), ({}, [101, 102]))
 
     drop.report(window, 'Copied c.txt')
-    timers[-1](5)
-    shown[2][1]('o')
-    check('enter closes the overlay early', (removed[-1], closed[-1]), (6, 103))
-    check('closing clears the marker once idle', cleared, [0, 0])
-
     drop.report(window, 'Copied d.txt')
-    drop.report(window, 'Copied e.txt')
-    check('a report replaced before showing drops its timer', (removed[-1], closed[-1]), (7, 103))
-    timers[-1](8)
-    check('only the later report shows', shown[-1][0], 'Copied e.txt')
+    timers[-2](3)
+    timers[-1](4)
+    check('a report replaced before showing never opens', [s[0] for s in shown[2:]], ['Copied d.txt'])
+    check('the result overlay is known as a dialog', drop.dialogs, {103: 7})
+
+    window.screen = types.SimpleNamespace(is_using_alternate_linebuf=lambda: False)
+    window.original_on_drop = lambda d: 'pasted'
+    check('a drop onto the result lands on the window beneath',
+          drop.on_drop(types.SimpleNamespace(id=103), {}), 'pasted')
+    check('the result made way', (drop.reports, drop.dialogs, closed[-1]), ({}, {}, 103))
+    drop.dialogs[104] = 7
+    check('a drop onto an open decision waits', drop.on_drop(types.SimpleNamespace(id=104), {}), None)
+    drop.dialogs.clear()
 
 
 def test_refusals(drop, tmp):

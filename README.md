@@ -58,21 +58,25 @@ Watchers attach when a window is created, so open windows keep kitty's own drop 
 
 | Situation | Result |
 | --- | --- |
-| Local shell at a prompt | Confirm, then copy into the reported cwd |
-| Shell over ssh | Confirm, then send, with kitty's progress marker showing until the remote answers |
-| A name already exists | The dialog offers Keep both, Overwrite or Skip, and names the clash |
+| Local shell at a prompt | One dialog per item, then copy into the reported cwd |
+| Shell over ssh | One dialog per item, then send, with kitty's progress marker showing until the remote answers |
+| A name already exists | That item's dialog offers Keep both, Overwrite or Skip, and names the free name |
 | Two dropped items share a basename | The second is suffixed, so a drop never loses an item |
 | A full-screen program owns the screen | Falls back to kitty's own handling, so `vim` is never typed at |
 | The remote does not answer in three seconds | Falls back to pasting the paths |
 
+Each item gets a dialog before anything is written.
+A free name asks Copy or Skip.
 Keep both counts up from `notes-1.txt` until the name is free, on either end.
 The file already sitting there keeps its name and its content.
-Skip copies the items whose names were free and leaves the rest alone.
+Skip leaves that item alone.
+Esc on any item cancels the whole drop.
 
-The dialog takes Enter for the default, the highlighted letter, a click on a button, or Esc to copy nothing.
+The dialog takes Enter for the default, the highlighted letter, a click on a button, or Esc.
 kitty's ask kitten binds no arrow keys.
 
-The result shows in an overlay on the window for a few seconds, and Enter, Esc or a click closes it earlier.
+The result shows in an overlay on the window until Enter, Esc or a click closes it.
+A drop onto that overlay closes it and goes ahead.
 A cancelled drop shows no result.
 A probe or a transfer in flight shows as kitty's progress marker in the tab bar and its progress bar on the window edge, the same signal an OSC 9;4 report gives.
 

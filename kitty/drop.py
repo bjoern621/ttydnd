@@ -13,7 +13,7 @@ import shutil
 import tarfile
 
 from kitty.boss import get_boss
-from kitty.fast_data_types import add_timer, remove_timer
+from kitty.fast_data_types import add_timer
 from kitty.utils import parse_uri_list
 from kitty.window import Window
 
@@ -23,9 +23,6 @@ WRAP = 76
 
 # Seconds a probe waits before the drop falls back to kitty's own handling.
 TIMEOUT = 3
-
-# Seconds a result overlay stays. Enter, Esc or a click closes it earlier.
-LINGER = 4
 
 # stty -echo stops the remote tty echoing the payload back at double the traffic.
 # ZG9uZQ== and ZmFpbA== decode to done and fail, arriving as the user var once tar has run.
@@ -41,8 +38,11 @@ pending = {}
 # Window id to the summary of a transfer in flight.
 sending = {}
 
-# Window id to the overlay showing its result, and the timer closing it.
+# Window id to the result overlay showing on it.
 reports = {}
+
+# Overlay id to the window beneath, for every dialog opened here.
+dialogs = {}
 
 
 def probe(names):
@@ -107,10 +107,6 @@ def summarize(names):
     return ', '.join(names)
 
 
-def counted(names):
-    return '1 item' if len(names) == 1 else f'{len(names)} items'
-
-
 def total_size(paths):
     total = 0
     for p in paths:
@@ -147,11 +143,11 @@ def progress(window, state):
 
 
 def report(window, text):
-    """Show text in an overlay on the window until LINGER runs out or the user closes it."""
+    """Show text in an overlay on the window until Enter, Esc or a click closes it."""
     window_id = window.id
     dismiss(window_id)
-    # overlay is None until the deferred show runs, and the timer is whichever is pending.
     entry = {'overlay': None}
+    reports[window_id] = entry
 
     def closed(answer):
         # A newer report owns the window by now, so a stale overlay going away changes nothing.
@@ -160,24 +156,25 @@ def report(window, text):
 
     # Deferred a tick: every caller runs inside a kitty callback, and the overlay reenters it.
     def show(timer_id):
+        if reports.get(window_id) is not entry:
+            return
         overlay = get_boss().choose(text, closed, 'o:OK', window=window, default='o', title='Copy files')
         if overlay is None:
-            reports.pop(window_id, None)
+            del reports[window_id]
             return
         entry['overlay'] = overlay.id
-        entry['timer'] = add_timer(lambda timer_id: dismiss(window_id), LINGER, False)
+        dialogs[overlay.id] = window_id
 
-    entry['timer'] = add_timer(show, 0, False)
-    reports[window_id] = entry
+    add_timer(show, 0, False)
 
 
 def dismiss(window_id):
     entry = reports.pop(window_id, None)
     if entry is None:
         return
-    remove_timer(entry['timer'])
     boss = get_boss()
     if entry['overlay'] is not None:
+        dialogs.pop(entry['overlay'], None)
         boss.mark_window_for_close(entry['overlay'])
     window = boss.window_id_map.get(window_id)
     # A probe or transfer started meanwhile keeps its spinner.
@@ -185,43 +182,53 @@ def dismiss(window_id):
         progress(window, 0)
 
 
-def ask(window, paths, names, free, destination, run):
-    """Confirm the drop, then hand run() the paths and the names to write."""
-    clashes = [n for n, f in zip(names, free) if n != f]
-    message = f'Copy {counted(names)} ({size(total_size(paths))}) {destination}?\n\n{summarize(names)}'
-    if len(clashes) == 1:
-        message += f'\n\n{clashes[0]} already exists.\nEsc cancels.'
-    elif clashes:
-        message += f'\n\n{len(clashes)} names already exist.\nEsc cancels.'
+def ask(window, paths, names, free, where, run):
+    """One dialog per item, then hand run() the paths and the names to write.
 
-    def answered(answer):
-        if answer in ('y', 'o'):
-            run(paths, names)
-        elif answer == 'k':
-            run(paths, free)
-        elif answer == 's':
-            # Only the items whose name was already free.
-            kept = [(p, n) for p, n, f in zip(paths, names, free) if n == f]
-            if kept:
-                run([p for p, _ in kept], [n for _, n in kept])
+    Nothing is written before the last answer, and Esc on any item cancels the drop.
+    """
+    chosen = []
+    total = len(paths)
+
+    def decide(i):
+        if i == total:
+            if chosen:
+                run([p for p, _ in chosen], [n for _, n in chosen])
             else:
                 report(window, 'Nothing copied')
-
-    # Deferred a tick: both callers run inside a kitty callback, and the overlay reenters it.
-    def show(timer_id):
+            return
+        path, name, spare = paths[i], names[i], free[i]
+        item = f'{name} ({size(total_size([path]))})'
+        note = f'Item {i + 1} of {total}. Esc cancels the drop.' if total > 1 else 'Esc cancels the drop.'
+        # The destination takes its own line, since a path has no space to wrap at.
         # The ask kitten requires each shortcut letter to occur in its own label.
-        if clashes:
+        if name == spare:
+            message = f'Copy {item} into\n{where}?\n\n{note}'
+            choices = ('y;green:Copy', 's;yellow:Skip')
+            default = 'y'
+        else:
+            message = f'{item} already exists in\n{where}.\nKeep both writes {spare}.\n\n{note}'
             choices = ('k;green:Keep both', 'o;red:Overwrite', 's;yellow:Skip')
             default = 'k'
-        else:
-            choices = ('y;green:Copy', 'c;red:Cancel')
-            default = 'y'
-        get_boss().choose(
-            message, answered, *choices,
-            window=window, default=default, title='Copy files',
-        )
+        slot = {}
 
-    add_timer(show, 0, False)
+        def answered(answer):
+            dialogs.pop(slot.get('overlay'), None)
+            if answer in ('y', 'o'):
+                chosen.append((path, name))
+            elif answer == 'k':
+                chosen.append((path, spare))
+            elif answer != 's':
+                return
+            add_timer(lambda timer_id: decide(i + 1), 0, False)
+
+        overlay = get_boss().choose(message, answered, *choices, window=window, default=default, title='Copy files')
+        if overlay is not None:
+            slot['overlay'] = overlay.id
+            dialogs[overlay.id] = window.id
+
+    # Deferred a tick: the callers and every answer run inside a kitty callback, and the overlay reenters it.
+    add_timer(lambda timer_id: decide(0), 0, False)
 
 
 def copy_local(window, cwd, paths, names):
@@ -276,15 +283,24 @@ def on_set_user_var(boss, window, data):
         return
     progress(window, 0)
     ask(window, entry['paths'], entry['names'], data['value'].split('/')[1:],
-        'into the remote working directory',
+        'the remote working directory',
         lambda kept, chosen: send_remote(window, kept, chosen))
 
 
 def on_drop(self, drop):
+    base_id = dialogs.get(self.id)
+    if base_id is not None:
+        # A result overlay makes way for the drop. A decision still open holds it.
+        base = get_boss().window_id_map.get(base_id)
+        if base is None or reports.get(base_id, {}).get('overlay') != self.id:
+            return None
+        dismiss(base_id)
+        return on_drop(base, drop)
     paths = dropped_paths(drop)
     # Alternate screen means a full-screen program owns the terminal, local or remote.
     if not paths or self.screen.is_using_alternate_linebuf():
         return self.original_on_drop(drop)
+    dismiss(self.id)
     names = plan_names(paths)
     if self.child_is_remote:
         pending[self.id] = {'paths': paths, 'names': names, 'drop': drop}
@@ -294,7 +310,7 @@ def on_drop(self, drop):
         add_timer(lambda timer_id: expire(window_id), TIMEOUT, False)
     elif self.at_prompt:
         cwd = self.cwd_for_serialization
-        ask(self, paths, names, resolve_local(cwd, names), f'into {cwd}',
+        ask(self, paths, names, resolve_local(cwd, names), cwd,
             lambda kept, chosen: copy_local(self, cwd, kept, chosen))
     else:
         self.original_on_drop(drop)
