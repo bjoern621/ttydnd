@@ -1,25 +1,51 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 320" width="700" height="320" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13">
-  <rect width="700" height="320" fill="#fbfbfa"/>
-  <text x="20" y="26" font-size="12" fill="#6b6b6b">One item's dialog, drawn by kitty's ask kitten over the window that received the drop.</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 304" width="760" height="304" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13">
+  <rect width="760" height="304" fill="#fbfbfa"/>
+  <text x="20" y="24" font-size="12" fill="#6b6b6b">A file dropped on a shell over ssh lands on the remote, which has nothing installed.</text>
 
-  <rect x="20" y="44" width="660" height="256" rx="6" fill="#2d2a2e"/>
-  <circle cx="42" cy="66" r="5" fill="#fd6883"/>
-  <circle cx="60" cy="66" r="5" fill="#f9cc6c"/>
-  <circle cx="78" cy="66" r="5" fill="#adda78"/>
-  <text x="350" y="70" text-anchor="middle" font-size="12" fill="#72696a">Copy files</text>
-  <line x1="20" y1="84" x2="680" y2="84" stroke="#4a464b"/>
+  <text x="20" y="54" font-size="12" fill="#8a5a2b">1. drop</text>
+  <text x="395" y="54" font-size="12" fill="#8a5a2b">2. it asks first</text>
 
-  <text x="44" y="116" fill="#fff1f3">notes.txt (1.2 MB) already exists in</text>
-  <text x="44" y="136" fill="#fff1f3">the remote working directory.</text>
-  <text x="44" y="156" fill="#fff1f3">Keep both writes notes-1.txt.</text>
+  <rect x="20" y="64" width="345" height="224" rx="6" fill="#2d2a2e"/>
+  <circle cx="42" cy="84" r="4.5" fill="#fd6883"/>
+  <circle cx="58" cy="84" r="4.5" fill="#f9cc6c"/>
+  <circle cx="74" cy="84" r="4.5" fill="#adda78"/>
+  <text x="192" y="88" text-anchor="middle" font-size="11" fill="#72696a">bjoern@remote: ~</text>
+  <line x1="20" y1="100" x2="365" y2="100" stroke="#4a464b"/>
 
-  <text x="44" y="208" fill="#f9cc6c">Item 1 of 2. Esc cancels the drop.</text>
+  <text x="36" y="128" font-size="12"><tspan fill="#adda78">bjoern@remote</tspan><tspan fill="#fff1f3"> ~ $ ls</tspan></text>
+  <text x="36" y="148" font-size="12" fill="#78dce8">data</text>
+  <text x="80" y="148" font-size="12" fill="#fff1f3">notes.txt</text>
+  <text x="36" y="168" font-size="12"><tspan fill="#adda78">bjoern@remote</tspan><tspan fill="#fff1f3"> ~ $ </tspan></text>
+  <rect x="166" y="158" width="8" height="13" fill="#fff1f3"/>
 
-  <rect x="44" y="250" width="100" height="26" rx="4" fill="#3a4a34" stroke="#adda78"/>
-  <text x="94" y="268" text-anchor="middle" fill="#adda78"><tspan fill="#fff1f3" font-weight="bold">K</tspan>eep both</text>
-  <rect x="156" y="250" width="100" height="26" rx="4" fill="#4a3234" stroke="#fd6883"/>
-  <text x="206" y="268" text-anchor="middle" fill="#fd6883"><tspan fill="#fff1f3" font-weight="bold">O</tspan>verwrite</text>
-  <rect x="268" y="250" width="62" height="26" rx="4" fill="#4a4434" stroke="#f9cc6c"/>
-  <text x="299" y="268" text-anchor="middle" fill="#f9cc6c"><tspan fill="#fff1f3" font-weight="bold">S</tspan>kip</text>
-  <text x="346" y="268" font-size="11" fill="#72696a">Enter, the letter, or a click. No arrow keys.</text>
+  <rect x="190" y="200" width="120" height="30" rx="5" fill="#e8e6e1" stroke="#8a8578"/>
+  <text x="250" y="220" text-anchor="middle" font-size="12" fill="#2d2a2e">notes.txt</text>
+  <path d="M 0 0 L 0 17 L 4.5 12.5 L 7.5 19 L 10.5 17.5 L 7.5 11.5 L 13 11.5 Z" fill="#fbfbfa" stroke="#2d2a2e" transform="translate(186,194)"/>
+
+  <line x1="367" y1="176" x2="389" y2="176" stroke="#3f6f4f" stroke-width="2" marker-end="url(#a)"/>
+
+  <rect x="395" y="64" width="345" height="224" rx="6" fill="#2d2a2e"/>
+  <circle cx="417" cy="84" r="4.5" fill="#fd6883"/>
+  <circle cx="433" cy="84" r="4.5" fill="#f9cc6c"/>
+  <circle cx="449" cy="84" r="4.5" fill="#adda78"/>
+  <text x="567" y="88" text-anchor="middle" font-size="11" fill="#72696a">Copy files</text>
+  <line x1="395" y1="100" x2="740" y2="100" stroke="#4a464b"/>
+
+  <text x="411" y="136" font-size="12" fill="#fff1f3">notes.txt (1.2 MB) already exists in</text>
+  <text x="411" y="156" font-size="12" fill="#fff1f3">the remote working directory.</text>
+  <text x="411" y="176" font-size="12" fill="#fff1f3">Keep both writes notes-1.txt.</text>
+  <text x="411" y="206" font-size="12" fill="#f9cc6c">Esc cancels the drop.</text>
+
+  <rect x="411" y="236" width="86" height="26" rx="4" fill="#3a4a34" stroke="#adda78"/>
+  <text x="454" y="254" text-anchor="middle" font-size="11" fill="#adda78"><tspan fill="#fff1f3" font-weight="bold">K</tspan>eep both</text>
+  <rect x="511" y="236" width="86" height="26" rx="4" fill="#4a3234" stroke="#fd6883"/>
+  <text x="554" y="254" text-anchor="middle" font-size="11" fill="#fd6883"><tspan fill="#fff1f3" font-weight="bold">O</tspan>verwrite</text>
+  <rect x="611" y="236" width="58" height="26" rx="4" fill="#4a4434" stroke="#f9cc6c"/>
+  <text x="640" y="254" text-anchor="middle" font-size="11" fill="#f9cc6c"><tspan fill="#fff1f3" font-weight="bold">S</tspan>kip</text>
+
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#3f6f4f"/>
+    </marker>
+  </defs>
 </svg>

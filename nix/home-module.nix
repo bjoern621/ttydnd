@@ -1,9 +1,24 @@
-{ drop }:
+{ watcher, package }:
 
-{ config, lib, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 let
   cfg = config.programs.ttydnd;
+
+  # The watcher finds the package beside it, so both land in one directory.
+  tree = pkgs.runCommand "ttydnd" { } ''
+    mkdir -p $out
+    cp ${watcher} $out/drop.py
+    cp -r ${package} $out/ttydnd
+    chmod -R u+w $out
+    grep -q '^TIMEOUT = ' $out/ttydnd/copy/tty.py
+    sed -i 's/^TIMEOUT = .*/TIMEOUT = ${toString cfg.timeout}/' $out/ttydnd/copy/tty.py
+  '';
 in
 {
   options.programs.ttydnd = {
@@ -29,6 +44,16 @@ in
         Null adds no alias.
       '';
     };
+
+    timeout = lib.mkOption {
+      type = lib.types.numbers.positive;
+      default = 3;
+      example = 10;
+      description = ''
+        Seconds a probe waits for the remote's reply before the drop falls back to kitty's own handling.
+        A link with hundreds of milliseconds of latency needs more, since the reply arrives behind the shell's echo of the probe.
+      '';
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -41,7 +66,7 @@ in
 
     # extraConfig rather than settings.watcher, so other watchers keep their own lines.
     programs.kitty.extraConfig = ''
-      watcher ${drop}
+      watcher ${tree}/drop.py
     ''
     + lib.optionalString cfg.dragOut ''
       mouse_map left press ungrabbed mouse_selection drag_or_normal_select

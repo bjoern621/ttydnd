@@ -5,6 +5,8 @@ No port is opened, no second connection is made, and nothing is written to the r
 
 The terminal drives every step.
 The remote only ever runs the two shell lines the terminal types at its prompt.
+One transport carries a drop this way, and [copy-transports.md](copy-transports.md) states what any
+transport owes.
 
 ![The three phases of a remote drop](flow.svg)
 
@@ -51,13 +53,23 @@ Nothing ever reads the variable back.
 ## Payload
 
 ```sh
- stty -echo; base64 -d | tar -xf -; s=$?; stty echo;
+ stty -echo; base64 -d | (tar -xf -; e=$?;
+ [ $e = 0 ] || printf '\033]1337;SetUserVar=kdrop=c3RvcA==\a';
+ cat >/dev/null; exit $e); s=$?; stty echo;
  [ $s = 0 ] && printf '\033]1337;SetUserVar=kdrop=ZG9uZQ==\a'
  || printf '\033]1337;SetUserVar=kdrop=ZmFpbA==\a'
 ```
 
 Then a tar archive, base64 encoded, wrapped at 76 columns, terminated by `0x04` at the start of a line.
 Archive member names are the free names the probe reported, so a rename needs nothing on the remote.
+
+`tar` ends on the first member it cannot write, with the payload still arriving.
+The subshell holds the pipe open and `cat` swallows what is left, so the stream never reaches the shell.
+A shell that reads it runs every line as a command.
+
+The payload goes out in bursts of whole lines.
+A terminal cannot recall what it has queued for the pty, so a burst is what a stopped transfer still costs.
+Whole lines keep a truncated stream decodable and put the terminator at a line start.
 
 `stty -echo` runs before the payload and matters more than it looks.
 Without it the remote tty echoes every byte back, doubling the traffic and flooding the screen.
@@ -71,24 +83,23 @@ The 76 columns GNU `base64` writes by default sit far under `MAX_CANON`, which P
 
 ## Result
 
-`ZG9uZQ==` decodes to `done`, `ZmFpbA==` to `fail`, both carried by the same user var.
+`c3RvcA==` decodes to `stop`, `ZG9uZQ==` to `done` and `ZmFpbA==` to `fail`, all carried by the same user var.
+
+`stop` goes out the moment tar exits non-zero, with the drain about to start.
+The terminal answers it by dropping the rest of the payload and typing the `0x04` terminator, which ends the drain there.
+A `0x04` at a prompt closes the session, so it is typed only while the drain is reading.
+
+`done` and `fail` arrive once the stream is consumed and the prompt is back.
 `$?` is tar's status, so a stream tar cannot read reports `fail` rather than staying silent.
 The values are constants rather than a subshell, which keeps the line short and needs no second `base64` call.
 
 ## Timeout
 
-A remote that answers nothing within three seconds is treated as unable to receive.
+A remote that answers nothing within the timeout, three seconds by default, is treated as unable to receive.
 The drop then falls back to whatever the terminal does with a dropped path on its own, which for kitty is pasting it at the prompt.
 
 ## Porting
 
 The shell half above is terminal agnostic.
-A backend needs four things from its terminal:
-
-- an event when files are dropped on a window
-- a way to write to the child pty
-- an event when `OSC 1337 ; SetUserVar` arrives
-- a way to tell that a full-screen program owns the screen, so a drop onto `vim` is never answered with typing
-
-kitty supplies all four.
-WezTerm supplies the first three through `user-dropped-paths` and `user-var-changed`.
+What a terminal has to supply for a backend to host it:
+[terminal-backends.md](terminal-backends.md).
