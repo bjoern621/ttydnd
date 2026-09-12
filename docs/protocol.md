@@ -50,12 +50,16 @@ Nothing reads the variable back.
 ## Payload
 
 ```sh
- stty -echo; base64 -d | (tar -xf -; e=$?;
+ stty -echo; printf '\033]1337;SetUserVar=kdrop=cmR5\a'; base64 -d | (tar -xf -; e=$?;
  [ $e = 0 ] || printf '\033]1337;SetUserVar=kdrop=c3RvcA==\a';
  cat >/dev/null; exit $e); s=$?; stty echo;
  [ $s = 0 ] && printf '\033]1337;SetUserVar=kdrop=ZG9uZQ==\a'
  || printf '\033]1337;SetUserVar=kdrop=ZmFpbA==\a'
 ```
+
+The line answers `rdy` the moment `base64` takes the tty, and the terminal holds the archive until that answer arrives.
+An interactive zsh reads its prompt in blocks, so a payload typed before `base64` is reading lands in the line editor and runs as commands, leaving `base64` a truncated archive.
+A shell that reads a line at a time takes the payload whenever it comes, so the one round trip serves every shell.
 
 Then a tar archive, base64 encoded, wrapped at 76 columns,
 terminated by `0x04` at the start of a line.
@@ -85,7 +89,7 @@ The 76 columns GNU `base64` writes by default sit far under `MAX_CANON`, which P
 
 ## Result
 
-`c3RvcA==` decodes to `stop`, `ZG9uZQ==` to `done` and `ZmFpbA==` to `fail`, all carried by the same user var.
+`cmR5` decodes to `rdy`, `c3RvcA==` to `stop`, `ZG9uZQ==` to `done` and `ZmFpbA==` to `fail`, all carried by the same user var.
 
 `stop` goes out the moment tar exits non-zero, with the drain about to start.
 The terminal answers it by dropping the rest of the payload and typing the `0x04` terminator,

@@ -19,11 +19,13 @@ WRAP = 76
 TIMEOUT = 3
 
 # stty -echo stops the remote tty echoing the payload back at double the traffic.
+# rdy goes out once base64 owns the tty, and the payload waits for it,
+# so an interactive zsh reading the prompt in blocks cannot take a payload line into its line editor.
 # tar ends on the first member it cannot write, so cat swallows the rest of the stream.
 # A payload that reaches the prompt runs as commands.
-# c3RvcA==, ZG9uZQ== and ZmFpbA== decode to stop, done and fail.
+# cmR5, c3RvcA==, ZG9uZQ== and ZmFpbA== decode to rdy, stop, done and fail.
 RECEIVE = (
-    " stty -echo; base64 -d | (tar -xf -; e=$?;"
+    " stty -echo; printf '\\033]1337;SetUserVar=kdrop=cmR5\\a'; base64 -d | (tar -xf -; e=$?;"
     " [ $e = 0 ] || printf '\\033]1337;SetUserVar=kdrop=c3RvcA==\\a';"
     " cat >/dev/null; exit $e); s=$?; stty echo;"
     " [ $s = 0 ] && printf '\\033]1337;SetUserVar=kdrop=ZG9uZQ==\\a'"
@@ -37,7 +39,7 @@ BURST = 5000
 STEP = 0.032
 
 # Answers the shell lines send back, apart from a probe's free names.
-ANSWERS = ('stop', 'done', 'fail')
+ANSWERS = ('rdy', 'stop', 'done', 'fail')
 
 SILENT = 'No answer from the remote, so the paths were pasted'
 UNPACK = 'The remote could not unpack the files'
@@ -107,11 +109,12 @@ class Stream:
         self.terminal = terminal
         self.done = done
         self.failed = failed
+        self.started = False
         terminal.progress(3)
-        terminal.write(RECEIVE)
         text = base64.b64encode(tarball(plan))
         self.lines = [text[i:i + WRAP] for i in range(0, len(text), WRAP)]
-        self.pump()
+        # RECEIVE first, then the payload once rdy says base64 is reading the tty.
+        terminal.write(RECEIVE)
 
     def pump(self):
         """Type the next burst, and arm the one after it until the payload runs out."""
@@ -140,7 +143,12 @@ class Stream:
             self.terminal.write(b'\x04')
 
     def reply(self, value):
-        if value == 'stop':
+        if value == 'rdy':
+            # One rdy per stream. A duplicate would start a second pump over the same lines.
+            if not self.started:
+                self.started = True
+                self.pump()
+        elif value == 'stop':
             self.cut()
         elif value == 'done':
             self.terminal.progress(0)

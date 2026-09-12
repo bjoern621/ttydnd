@@ -172,6 +172,16 @@ class Shell:
             pass
 
 
+def await_var(shell, value, timeout=2.0):
+    """Block until the shell sends this user var back, or the timeout lapses."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if value in shell.acks(0):
+            return True
+        time.sleep(0.01)
+    return False
+
+
 SHELLS = [s for s in ('sh', 'bash', 'zsh', 'dash', 'ash') if shutil.which(s)]
 
 
@@ -258,7 +268,7 @@ def test_transfer(pkg, tmp):
 
     shell = Shell(['sh'], dest)
     shell.send(tty.RECEIVE.encode())
-    time.sleep(0.4)
+    check('the shell signals rdy before the payload', await_var(shell, 'rdy'), True)
     shell.output.clear()
     payload = base64.b64encode(tty.tarball(list(zip(paths, free))))
     lines = [payload[i:i + tty.WRAP] for i in range(0, len(payload), tty.WRAP)]
@@ -517,7 +527,12 @@ def test_stream(pkg, tmp):
     try:
         pkg.copy.send(destination, plan, lambda: None, terminal.tell)
         check('the receive line goes first', terminal.written[0], tty.RECEIVE)
+        check('the payload waits for rdy', len(terminal.written), 1)
+        pkg.copy.reply(9, 'rdy')
         check('a burst carries whole lines', terminal.written[1].count(b'\n'), 2)
+        written = len(terminal.written)
+        pkg.copy.reply(9, 'rdy')
+        check('a second rdy starts no second stream', len(terminal.written), written)
         check('a burst at a time', len(terminal.timers), 1)
         while terminal.timers:
             terminal.timers.pop(0)()
@@ -532,6 +547,7 @@ def test_stream(pkg, tmp):
         terminal = Terminal(9)
         destination = pkg.Destination(terminal, 'session')
         pkg.copy.send(destination, plan, lambda: None, terminal.tell)
+        pkg.copy.reply(9, 'rdy')
         pkg.copy.reply(9, 'stop')
         check('a cut stream ends at a line start', terminal.written[-1], b'\x04')
         check('a cut stream stays whole lines', len(typed().rstrip(b'\x04')) % tty.WRAP, 0)
@@ -555,7 +571,7 @@ def test_refusals(pkg, tmp):
         os.makedirs(dest)
         shell = Shell([name], dest)
         shell.send(tty.RECEIVE.encode())
-        time.sleep(0.4)
+        await_var(shell, 'rdy')
         shell.output.clear()
         payload = base64.b64encode(os.urandom(20000))
         lines = [payload[i:i + tty.WRAP] for i in range(0, len(payload), tty.WRAP)]
@@ -577,6 +593,38 @@ def test_refusals(pkg, tmp):
     check('probe stays silent without base64', reply, None)
 
 
+def test_delivery(pkg, tmp):
+    """A payload delivered after rdy lands whole under every shell, none of it on the prompt.
+
+    An interactive zsh reads the prompt in blocks, so a payload sent before rdy lands in its line
+    editor and the archive arrives truncated.  The rdy handshake holds the payload until base64 reads.
+    """
+    tty = pkg.copy.tty
+    for name in SHELLS:
+        source = os.path.join(tmp, f'deliver-src-{name}')
+        dest = os.path.join(tmp, f'deliver-dest-{name}')
+        os.makedirs(source)
+        os.makedirs(dest)
+        data = os.urandom(50000)
+        open(os.path.join(source, 'blob.bin'), 'wb').write(data)
+
+        shell = Shell([name], dest)
+        shell.send(tty.RECEIVE.encode())
+        rdy = await_var(shell, 'rdy')
+        shell.output.clear()
+        payload = base64.b64encode(tty.tarball([(os.path.join(source, 'blob.bin'), 'blob.bin')]))
+        lines = [payload[i:i + tty.WRAP] for i in range(0, len(payload), tty.WRAP)]
+        shell.send(b'\n'.join(lines) + b'\n\x04')
+        reply = shell.ack(2.0)
+        landed = os.path.join(dest, 'blob.bin')
+        whole = os.path.exists(landed) and open(landed, 'rb').read() == data
+        visible = re.sub(rb'\x1b\][^\x07]*\x07', b'', bytes(shell.output))
+        shell.close()
+        check(f'rdy precedes the payload under {name}', rdy, True)
+        check(f'the payload lands whole under {name}', (reply, whole), ('done', True))
+        check(f'no payload line runs as a command under {name}', b'not found' in visible, False)
+
+
 def main():
     drop = load()
     pkg = drop.ttydnd
@@ -591,6 +639,7 @@ def main():
         test_reports(load())
         test_backend(load(), tmp)
         test_stream(pkg, tmp)
+        test_delivery(pkg, tmp)
         test_refusals(pkg, tmp)
     print()
     if failures:
